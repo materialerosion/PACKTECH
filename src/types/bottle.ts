@@ -75,6 +75,10 @@ export interface Bottle {
   opacity: number;             // 0-1 for transparency
   labelZones: LabelZone[];
   
+  // Resin
+  plasticWeight?: number;      // g
+  weightTolerance?: number;    // ± g
+
   // Calculated values
   volume: number;              // ml (calculated)
   surfaceArea: number;         // cm² (calculated)

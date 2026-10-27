@@ -152,15 +152,12 @@ export default function Bottle3D({
       
       {/* Measurements overlay */}
       {showMeasurements && (
-        <Html position={[dims.diameter / 2 + 20, dims.height / 2, 0]}>
-          <div className="bg-white/90 px-2 py-1 rounded shadow text-xs whitespace-nowrap">
-            <div className="font-medium">{bottle.name}</div>
-            <div className="text-gray-600">
-              {bottle.volume.toFixed(1)} ml
-            </div>
-            <div className="text-gray-500">
-              H: {dims.height}mm × Ø{dims.diameter}mm
-            </div>
+        <Html
+          center
+          position={[0, bodyOnlyHeight + dims.neckHeight + effectiveCapHeight + 20, 0]}
+        >
+          <div className="bg-white/90 px-2 py-1 rounded shadow text-xs font-medium whitespace-nowrap">
+            {bottle.name}
           </div>
         </Html>
       )}

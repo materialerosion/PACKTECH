@@ -69,7 +69,8 @@ export function createProduct(
   width: number,
   height: number,
   mass: number,
-  color: string
+  color: string,
+  extras: Pick<Product, 'group' | 'massEstimated' | 'specVolumeCc'> = {}
 ): Product {
   return {
     id: uuidv4(),
@@ -79,8 +80,64 @@ export function createProduct(
     mass,
     color,
     volume: calculateProductVolume(shape, length, width, height),
+    ...extras,
   };
 }
+
+// Typical densities (g/cm³) used when only dimensions are known
+const DENSITY_GUMMY = 1.3;
+const DENSITY_TABLET = 1.2;
+
+/**
+ * Create a product whose mass is estimated from its shape volume and a density.
+ */
+function createEstimatedProduct(
+  group: string,
+  name: string,
+  shape: ProductShape,
+  length: number,
+  width: number,
+  height: number,
+  density: number,
+  color: string,
+  specVolumeCc: number
+): Product {
+  const volumeCc = calculateProductVolume(shape, length, width, height) / 1000;
+  const mass = Math.round(volumeCc * density * 100) / 100;
+  return createProduct(name, shape, length, width, height, mass, color, {
+    group,
+    massEstimated: true,
+    specVolumeCc,
+  });
+}
+
+/**
+ * Bayer products from the "Gummies & Fruit Bite Sizes" and
+ * "Chewables, Tablets & Pill Sizes" slides (average L × W × H, mm).
+ */
+const BAYER_PRODUCTS: Product[] = [
+  createEstimatedProduct('Mens VitaCraves', 'Mens VitaCraves – Purple', 'dome', 18, 17, 10, DENSITY_GUMMY, '#2B2233', 2.99),
+  createEstimatedProduct('Mens VitaCraves', 'Mens VitaCraves – Red', 'dome', 18, 16, 10, DENSITY_GUMMY, '#C8102E', 3.07),
+  createEstimatedProduct('Mens VitaCraves', 'Mens VitaCraves – Green', 'dome', 18, 17, 11, DENSITY_GUMMY, '#1E5631', 3.57),
+
+  createEstimatedProduct('Womens VitaCraves', 'Womens VitaCraves – Purple', 'dome', 17, 17, 10, DENSITY_GUMMY, '#3A2430', 2.96),
+  createEstimatedProduct('Womens VitaCraves', 'Womens VitaCraves – Red', 'dome', 18, 17, 10, DENSITY_GUMMY, '#D0202E', 3.01),
+  createEstimatedProduct('Womens VitaCraves', 'Womens VitaCraves – Orange Slice', 'gummy', 20, 13, 10, DENSITY_GUMMY, '#F28C28', 2.57),
+
+  createEstimatedProduct('Teens VitaCraves', 'Teens VitaCraves – Green', 'dome', 18, 17, 12, DENSITY_GUMMY, '#9BB547', 3.53),
+  createEstimatedProduct('Teens VitaCraves', 'Teens VitaCraves – Red', 'dome', 18, 17, 11, DENSITY_GUMMY, '#C0392B', 3.3),
+  createEstimatedProduct('Teens VitaCraves', 'Teens VitaCraves – Teal', 'dome', 18, 17, 11, DENSITY_GUMMY, '#1A8C7E', 3.47),
+
+  createEstimatedProduct('Fruit Bites', 'Fruit Bites', 'gummy', 19, 19, 5, DENSITY_GUMMY, '#8B3A2B', 1.81),
+
+  createEstimatedProduct('Flintstones Chewables', 'Flintstones – Red', 'gummy', 19, 11, 8, DENSITY_TABLET, '#D9685A', 1.5),
+  createEstimatedProduct('Flintstones Chewables', 'Flintstones – Purple', 'gummy', 19, 10, 8, DENSITY_TABLET, '#6B5A6E', 1.46),
+  createEstimatedProduct('Flintstones Chewables', 'Flintstones – Orange', 'gummy', 19, 10, 8, DENSITY_TABLET, '#D9832B', 1.5),
+
+  createEstimatedProduct('Tablets & Softgels', 'Mens Tablet', 'oblong-tablet', 19, 9, 7, DENSITY_TABLET, '#EFEBDD', 1.22),
+  createEstimatedProduct('Tablets & Softgels', 'Womens Tablet', 'oblong-tablet', 22, 9, 7, DENSITY_TABLET, '#E8C77A', 1.44),
+  createEstimatedProduct('Tablets & Softgels', 'Prenatal Softgel', 'capsule', 24, 10, 10, DENSITY_TABLET, '#7A1010', 1.88),
+];
 
 /**
  * Product presets for common pharmaceutical products.
@@ -98,6 +155,7 @@ export const PRODUCT_PRESETS: Product[] = [
   createProduct('Gummy Vitamin', 'gummy', 18, 14, 10, 2.0, '#FFA500'),
   createProduct('Dome Gummy', 'dome', 16, 16, 10, 1.8, '#FF69B4'),
   createProduct('Cylinder Gummy', 'gummy-cylinder', 14, 14, 10, 1.6, '#9370DB'),
+  ...BAYER_PRODUCTS,
 ];
 
 /**

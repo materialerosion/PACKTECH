@@ -4,20 +4,50 @@
  * Renders the bottle as a transparent static collider and products as dynamic bodies.
  */
 
-import { useMemo, Suspense } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, PerspectiveCamera, Grid } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
+import { useMemo, useRef, Suspense, MutableRefObject } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera, Grid } from '@react-three/drei';
+import { Physics, RigidBody, CuboidCollider, useRapier } from '@react-three/rapier';
 import { useStore, useFillSimulation } from '@/store';
 import BottleCollider from './BottleCollider';
 import ProductBody from './ProductBody';
 import SimulationController from './SimulationController';
 import { Droplets } from 'lucide-react';
 
+const PHYSICS_TIME_STEP = 1 / 60;
+const MAX_PHYSICS_FRAME_DELTA = 1 / 30;
+const PHYSICS_FRAME_BUDGET_MS = 10;
+
+/**
+ * Drives the (paused) physics world in fixed steps within a per-frame time
+ * budget. The built-in loop catches up up to 0.5 s per frame, which spirals
+ * into ~1 fps once a step costs more than the time it simulates; here a heavy
+ * pile plays in slow motion instead. Advances timeRef by simulated seconds.
+ */
+function BudgetedPhysicsStepper({ timeRef }: { timeRef: MutableRefObject<number> }) {
+  const { step } = useRapier();
+  const accumulator = useRef(0);
+  useFrame((_, delta) => {
+    accumulator.current += Math.min(delta, MAX_PHYSICS_FRAME_DELTA);
+    const start = performance.now();
+    while (accumulator.current >= PHYSICS_TIME_STEP) {
+      step(PHYSICS_TIME_STEP);
+      accumulator.current -= PHYSICS_TIME_STEP;
+      timeRef.current += PHYSICS_TIME_STEP;
+      if (performance.now() - start > PHYSICS_FRAME_BUDGET_MS) {
+        accumulator.current = 0;
+        break;
+      }
+    }
+  });
+  return null;
+}
+
 export default function FillScene3D() {
   const { ui } = useStore();
   const fillSim = useFillSimulation();
   const { fillBottle, fillProduct, status, productBodies } = fillSim;
+  const physicsTimeRef = useRef(0);
   
   const isComplete = status === 'complete';
   
@@ -68,15 +98,14 @@ export default function FillScene3D() {
         
         {/* Lighting */}
         <ambientLight intensity={0.6} />
+        <hemisphereLight args={['#ffffff', '#cbd5e1', 0.6]} />
         <directionalLight
           position={[100, 200, 100]}
           intensity={1}
           castShadow
-          shadow-mapSize={[2048, 2048]}
+          shadow-mapSize={[1024, 1024]}
         />
         <directionalLight position={[-100, 100, -100]} intensity={0.3} />
-        
-        <Environment preset="studio" />
         
         {/* Grid */}
         {ui.showGrid && (
@@ -101,13 +130,20 @@ export default function FillScene3D() {
           <meshStandardMaterial color="#f1f5f9" transparent opacity={0.5} />
         </mesh>
         
-        {/* Physics world */}
+        {/* Physics world — mm units (lengthUnit=1000 ⇒ 1 unit = 1 mm) */}
         <Suspense fallback={null}>
           <Physics
             gravity={[0, -9810, 0]}
-            timeStep={1 / 240}
-            interpolate={true}
+            timeStep={PHYSICS_TIME_STEP}
+            paused
+            interpolate={false}
+            // Tolerance props (predictionDistance, allowedLinearError) are
+            // normalized and multiplied by lengthUnit; keep library defaults.
+            lengthUnit={1000}
+            maxCcdSubsteps={4}
           >
+            <BudgetedPhysicsStepper timeRef={physicsTimeRef} />
+            
             {/* Static bottle collider */}
             <BottleCollider bottle={fillBottle} />
             
@@ -124,11 +160,17 @@ export default function FillScene3D() {
               />
             ))}
             
-            {/* Ground collider to catch fallen products */}
-            {/* Using a simple invisible floor */}
+            {/* Physics ground to catch overflowed products */}
+            <RigidBody type="fixed" colliders={false} position={[0, -1, 0]}>
+              <CuboidCollider
+                args={[250, 0.5, 250]}
+                friction={0.8}
+                restitution={0.02}
+              />
+            </RigidBody>
             
             {/* Simulation controller (no visual output) */}
-            <SimulationController />
+            <SimulationController physicsTimeRef={physicsTimeRef} />
           </Physics>
         </Suspense>
       </Canvas>

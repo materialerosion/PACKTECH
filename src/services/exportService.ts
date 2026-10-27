@@ -173,6 +173,8 @@ export const exportService = {
       'Neck Finish': bottle.dimensions.neckFinish,
       'Cap Style': bottle.capStyle,
       'Material': bottle.material,
+      'Plastic Weight (g)': bottle.plasticWeight ?? '',
+      'Weight Tolerance (± g)': bottle.weightTolerance ?? '',
       'Body Color': bottle.bodyColor,
       'Cap Color': bottle.capColor,
       'Opacity': bottle.opacity,

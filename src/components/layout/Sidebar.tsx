@@ -57,9 +57,9 @@ export default function Sidebar() {
                   <label className="text-xs text-gray-600 font-medium">Bottle Index</label>
                   <input
                     type="number"
-                    value={editBottleIndex}
-                    onChange={(e) => setEditBottleIndex(Math.max(0, parseInt(e.target.value) || 0))}
-                    min={0}
+                    value={editBottleIndex + 1}
+                    onChange={(e) => setEditBottleIndex(Math.max(0, (parseInt(e.target.value) || 1) - 1))}
+                    min={1}
                     className="input text-sm"
                   />
                 </div>

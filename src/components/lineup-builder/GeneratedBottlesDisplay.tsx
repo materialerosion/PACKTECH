@@ -2,17 +2,16 @@
  * Generated Bottles Display Component
  * Shows the bottles in a series with fill range information.
  * Provides both a visual shelf view and a detailed list view.
- * Includes per-series gap/overlap analysis and space utilization metrics.
+ * Includes a portfolio summary: diameter / neck finish counts and bottle-to-bottle step differences.
  */
 
 import { useState, useMemo } from 'react';
 import { useStore, useActiveSeries } from '@/store';
-import { BottleSeries, FillRange, IntraSeriesAnalysis } from '@/types/bottleSeries';
+import { BottleSeries, FillRange } from '@/types/bottleSeries';
 import { Bottle } from '@/types/bottle';
 import { FillRangeService } from '@/services/fillRangeService';
-import { ComparisonService } from '@/services/comparisonService';
 import { GENERATION_ALGORITHM_NAMES } from '@/types/bottleSeries';
-import { List, LayoutGrid, Trash2, BarChart3, AlertTriangle, CheckCircle } from 'lucide-react';
+import { List, LayoutGrid, Trash2, BarChart3 } from 'lucide-react';
 
 type DisplayMode = 'list' | 'grid';
 
@@ -26,15 +25,9 @@ export default function GeneratedBottlesDisplay() {
   const [selectedBottleIndex, setSelectedBottleIndex] = useState<number | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(true);
 
-  // Compute fill ranges and per-series analysis
   const fillRanges = useMemo(
     () => activeSeries ? FillRangeService.calculateSeriesFillRanges(activeSeries) : [],
     [activeSeries]
-  );
-
-  const seriesAnalysis = useMemo(
-    () => activeSeries ? ComparisonService.analyzeSeriesInternal(activeSeries, fillRanges) : null,
-    [activeSeries, fillRanges]
   );
 
   if (!activeSeries) {
@@ -60,7 +53,7 @@ export default function GeneratedBottlesDisplay() {
           <button
             onClick={() => setShowAnalysis(!showAnalysis)}
             className={`p-1.5 rounded transition-colors ${showAnalysis ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-            title="Toggle gap analysis"
+            title="Toggle portfolio summary"
           >
             <BarChart3 className="w-4 h-4" />
           </button>
@@ -93,10 +86,7 @@ export default function GeneratedBottlesDisplay() {
         </div>
       </div>
 
-      {/* Series Gap Analysis Panel */}
-      {showAnalysis && seriesAnalysis && (
-        <SeriesAnalysisPanel analysis={seriesAnalysis} />
-      )}
+      {showAnalysis && <PortfolioSummaryPanel bottles={activeSeries.bottles} />}
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
@@ -142,11 +132,12 @@ function BottleListView({ series, fillRanges, selectedIndex, onSelect }: BottleV
   return (
     <div className="space-y-1">
       {/* Table header */}
-      <div className="grid grid-cols-6 gap-2 px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+      <div className="grid grid-cols-7 gap-2 px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
         <span>#</span>
         <span>Volume</span>
         <span>Height</span>
         <span>Diameter</span>
+        <span>Weight</span>
         <span>Min Fill</span>
         <span>Max Fill</span>
       </div>
@@ -159,7 +150,7 @@ function BottleListView({ series, fillRanges, selectedIndex, onSelect }: BottleV
             key={bottle.id}
             onClick={() => onSelect(selectedIndex === index ? null : index)}
             className={`
-              grid grid-cols-6 gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors text-sm
+              grid grid-cols-7 gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors text-sm
               ${selectedIndex === index
                 ? 'bg-blue-50 border border-blue-200'
                 : 'hover:bg-gray-50 border border-transparent'
@@ -170,6 +161,7 @@ function BottleListView({ series, fillRanges, selectedIndex, onSelect }: BottleV
             <span className="font-medium text-gray-900">{bottle.volume.toFixed(0)} mL</span>
             <span className="text-gray-600">{bottle.dimensions.height.toFixed(1)} mm</span>
             <span className="text-gray-600">{bottle.dimensions.diameter.toFixed(1)} mm</span>
+            <span className="text-gray-600">{formatWeight(bottle)}</span>
             <span className="text-green-600">{range.minFill.toFixed(0)} mL</span>
             <span className="text-blue-600">{range.maxFill.toFixed(0)} mL</span>
           </div>
@@ -243,6 +235,12 @@ function BottleGridView({ series, fillRanges, selectedIndex, onSelect }: BottleV
   );
 }
 
+function formatWeight(bottle: Bottle): string {
+  if (bottle.plasticWeight === undefined) return '—';
+  const tol = bottle.weightTolerance !== undefined ? ` ±${bottle.weightTolerance}` : '';
+  return `${bottle.plasticWeight} g${tol}`;
+}
+
 // ─── Details Panel ────────────────────────────────────────────────────
 
 interface BottleDetailsPanelProps {
@@ -275,6 +273,16 @@ function BottleDetailsPanel({ bottle, fillRange, index }: BottleDetailsPanelProp
           <span className="font-medium">{bottle.surfaceArea.toFixed(1)} cm²</span>
         </div>
         <div>
+          <span className="text-gray-500 block">Plastic Weight</span>
+          <span className="font-medium">{formatWeight(bottle)}</span>
+        </div>
+        <div>
+          <span className="text-gray-500 block">Neck Finish</span>
+          <span className="font-medium">{bottle.dimensions.neckFinish}</span>
+        </div>
+        <div />
+
+        <div>
           <span className="text-gray-500 block">Min Fill ({fillRange.minPercent}%)</span>
           <span className="font-medium text-green-600">{fillRange.minFill.toFixed(1)} mL</span>
         </div>
@@ -291,115 +299,206 @@ function BottleDetailsPanel({ bottle, fillRange, index }: BottleDetailsPanelProp
   );
 }
 
-// ─── Series Analysis Panel ────────────────────────────────────────────
+// ─── Portfolio Summary Panel ──────────────────────────────────────────
 
-interface SeriesAnalysisPanelProps {
-  analysis: IntraSeriesAnalysis;
+// Capacity steps below this are flagged as near-duplicates
+const CLOSE_STEP_PERCENT = 10;
+
+// Capacity comes from the bottle name when it starts with a number (e.g. "70.5 mL"),
+// otherwise from the calculated volume.
+function bottleCapacity(bottle: Bottle): number {
+  const fromName = parseFloat(bottle.name);
+  return Number.isFinite(fromName) ? fromName : bottle.volume;
 }
 
-function SeriesAnalysisPanel({ analysis }: SeriesAnalysisPanelProps) {
-  const hasGaps = analysis.gaps.length > 0;
-  const hasOverlaps = analysis.overlaps.length > 0;
-  const efficiencyColor = analysis.coverageEfficiency >= 90 ? 'green' :
-    analysis.coverageEfficiency >= 70 ? 'yellow' : 'red';
+function neckSize(finish: string): string {
+  const match = finish.match(/\d{2}/);
+  return match ? match[0] : finish;
+}
+
+function countBy<T extends string | number>(values: T[]): [T, number][] {
+  const counts = new Map<T, number>();
+  values.forEach((v) => counts.set(v, (counts.get(v) ?? 0) + 1));
+  return [...counts.entries()];
+}
+
+function signed(n: number, digits = 1): string {
+  return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}`;
+}
+
+function PortfolioSummaryPanel({ bottles }: { bottles: Bottle[] }) {
+  const summary = useMemo(() => {
+    const sorted = [...bottles].sort((a, b) => bottleCapacity(a) - bottleCapacity(b));
+
+    const diameters = countBy(sorted.map((b) => Math.round(b.dimensions.diameter * 100) / 100))
+      .sort((a, b) => a[0] - b[0]);
+    const finishes = countBy(sorted.map((b) => b.dimensions.neckFinish))
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const neckSizes = countBy(sorted.map((b) => neckSize(b.dimensions.neckFinish)))
+      .sort((a, b) => a[0].localeCompare(b[0]));
+
+    const steps = sorted.slice(1).map((b, i) => {
+      const prev = sorted[i];
+      const capPrev = bottleCapacity(prev);
+      const cap = bottleCapacity(b);
+      const capDelta = cap - capPrev;
+      const capPct = capPrev > 0 ? (capDelta / capPrev) * 100 : 0;
+      const weightDelta =
+        b.plasticWeight !== undefined && prev.plasticWeight !== undefined
+          ? b.plasticWeight - prev.plasticWeight
+          : null;
+      return {
+        from: prev.name,
+        to: b.name,
+        capDelta,
+        capPct,
+        diaDelta: b.dimensions.diameter - prev.dimensions.diameter,
+        heightDelta: b.dimensions.height - prev.dimensions.height,
+        weightDelta,
+        sameFinish: b.dimensions.neckFinish === prev.dimensions.neckFinish,
+        sameNeck: neckSize(b.dimensions.neckFinish) === neckSize(prev.dimensions.neckFinish),
+        isClose: capPct < CLOSE_STEP_PERCENT,
+      };
+    });
+
+    const pcts = steps.map((s) => s.capPct);
+    const avgStep = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : 0;
+
+    return {
+      count: sorted.length,
+      capMin: sorted.length ? bottleCapacity(sorted[0]) : 0,
+      capMax: sorted.length ? bottleCapacity(sorted[sorted.length - 1]) : 0,
+      diameters,
+      finishes,
+      neckSizes,
+      steps,
+      avgStep,
+      minStep: pcts.length ? Math.min(...pcts) : 0,
+      maxStep: pcts.length ? Math.max(...pcts) : 0,
+      closeCount: steps.filter((s) => s.isClose).length,
+    };
+  }, [bottles]);
+
+  if (summary.count === 0) return null;
 
   return (
-    <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
-      {/* Efficiency summary bar */}
-      <div className="flex items-center gap-2 mb-3">
-        {analysis.coverageEfficiency >= 90 ? (
-          <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-        ) : (
-          <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${
-            efficiencyColor === 'yellow' ? 'text-yellow-500' : 'text-red-500'
-          }`} />
-        )}
-        <span className="text-xs font-semibold text-gray-700">Series Gap Analysis</span>
-        <span className={`ml-auto text-xs font-bold ${
-          efficiencyColor === 'green' ? 'text-green-600' :
-          efficiencyColor === 'yellow' ? 'text-yellow-600' : 'text-red-600'
-        }`}>
-          {analysis.coverageEfficiency.toFixed(1)}% efficient
+    <div className="border-b border-gray-200 bg-gray-50 px-4 py-3 space-y-3 max-h-[55%] overflow-auto">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs font-semibold text-gray-700">Portfolio Summary</span>
+        <span className="text-[11px] text-gray-500">
+          {summary.capMin} – {summary.capMax} mL range
         </span>
       </div>
 
-      {/* Metrics grid */}
-      <div className="grid grid-cols-4 gap-3 text-xs">
-        <div className="bg-white rounded-lg p-2 border border-gray-100">
-          <span className="text-gray-500 block text-[10px] uppercase tracking-wider">Coverage Span</span>
-          <span className="font-bold text-gray-900">{analysis.coverageSpan.toFixed(0)} mL</span>
-        </div>
-        <div className="bg-white rounded-lg p-2 border border-gray-100">
-          <span className="text-gray-500 block text-[10px] uppercase tracking-wider">Covered</span>
-          <span className="font-bold text-blue-600">{analysis.coveredRange.toFixed(0)} mL</span>
-        </div>
-        <div className={`rounded-lg p-2 border ${
-          hasGaps ? 'bg-red-50 border-red-100' : 'bg-white border-gray-100'
-        }`}>
-          <span className="text-gray-500 block text-[10px] uppercase tracking-wider">Total Gaps</span>
-          <span className={`font-bold ${hasGaps ? 'text-red-600' : 'text-green-600'}`}>
-            {analysis.totalGapSize.toFixed(0)} mL
-          </span>
-          {hasGaps && (
-            <span className="text-[10px] text-red-400 block">
-              {analysis.gaps.length} gap{analysis.gaps.length > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-        <div className={`rounded-lg p-2 border ${
-          hasOverlaps ? 'bg-yellow-50 border-yellow-100' : 'bg-white border-gray-100'
-        }`}>
-          <span className="text-gray-500 block text-[10px] uppercase tracking-wider">Overlaps</span>
-          <span className={`font-bold ${hasOverlaps ? 'text-yellow-600' : 'text-gray-400'}`}>
-            {analysis.totalOverlapSize.toFixed(0)} mL
-          </span>
-          {hasOverlaps && (
-            <span className="text-[10px] text-yellow-500 block">
-              {analysis.overlaps.length} overlap{analysis.overlaps.length > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
+      <div className="grid grid-cols-5 gap-3 text-xs">
+        <SummaryTile label="Bottles" value={summary.count} />
+        <SummaryTile label="Diameters" value={summary.diameters.length} />
+        <SummaryTile label="Neck Finishes" value={summary.finishes.length} />
+        <SummaryTile
+          label="Neck Sizes"
+          value={summary.neckSizes.length}
+          sub={summary.neckSizes.map(([size]) => `${size} mm`).join(' · ')}
+        />
+        <SummaryTile
+          label="Avg Capacity Step"
+          value={`${summary.avgStep.toFixed(0)}%`}
+          sub={`${summary.minStep.toFixed(0)}% – ${summary.maxStep.toFixed(0)}%`}
+        />
       </div>
 
-      {/* Coverage efficiency bar */}
-      <div className="mt-3">
-        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${
-              efficiencyColor === 'green' ? 'bg-green-500' :
-              efficiencyColor === 'yellow' ? 'bg-yellow-500' : 'bg-red-500'
+      <div className="grid grid-cols-2 gap-3 text-[11px]">
+        <ChipGroup
+          label="Diameters (mm)"
+          items={summary.diameters.map(([d, n]) => ({ key: String(d), label: d.toFixed(2), count: n }))}
+        />
+        <ChipGroup
+          label="Neck finishes"
+          items={summary.finishes.map(([f, n]) => ({ key: f, label: f, count: n }))}
+        />
+      </div>
+
+      <div>
+        <div className="flex items-baseline justify-between mb-1">
+          <span className="text-[10px] uppercase tracking-wider text-gray-500">Bottle-to-bottle differences</span>
+          {summary.closeCount > 0 && (
+            <span className="text-[11px] text-amber-600">
+              {summary.closeCount} step{summary.closeCount > 1 ? 's' : ''} under {CLOSE_STEP_PERCENT}% capacity
+            </span>
+          )}
+        </div>
+        <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
+          <table className="w-full text-[11px]">
+            <thead className="bg-gray-50 text-gray-500">
+              <tr>
+                <th className="text-left font-medium px-2 py-1">Step</th>
+                <th className="text-right font-medium px-2 py-1">Capacity</th>
+                <th className="text-right font-medium px-2 py-1">Diameter</th>
+                <th className="text-right font-medium px-2 py-1">Height</th>
+                <th className="text-right font-medium px-2 py-1">Weight</th>
+                <th className="text-left font-medium px-2 py-1">Finish</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.steps.map((s) => (
+                <tr
+                  key={`${s.from}-${s.to}`}
+                  className={`border-t border-gray-100 ${s.isClose ? 'bg-amber-50' : ''}`}
+                >
+                  <td className="px-2 py-1 text-gray-700 whitespace-nowrap">
+                    {s.from} → {s.to}
+                  </td>
+                  <td className={`px-2 py-1 text-right font-mono ${s.isClose ? 'text-amber-700 font-semibold' : 'text-gray-900'}`}>
+                    {signed(s.capDelta)} mL ({signed(s.capPct, 0)}%)
+                  </td>
+                  <td className="px-2 py-1 text-right font-mono text-gray-700">
+                    {s.diaDelta === 0 ? 'same' : `${signed(s.diaDelta, 2)} mm`}
+                  </td>
+                  <td className="px-2 py-1 text-right font-mono text-gray-700">
+                    {signed(s.heightDelta, 2)} mm
+                  </td>
+                  <td className="px-2 py-1 text-right font-mono text-gray-700">
+                    {s.weightDelta === null ? '—' : `${signed(s.weightDelta)} g`}
+                  </td>
+                  <td className="px-2 py-1 text-gray-600">
+                    {s.sameFinish ? 'same' : s.sameNeck ? 'variant' : 'new size'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryTile({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+  return (
+    <div className="bg-white rounded-lg p-2 border border-gray-100">
+      <span className="text-gray-500 block text-[10px] uppercase tracking-wider">{label}</span>
+      <span className="font-bold text-gray-900 text-sm">{value}</span>
+      {sub && <span className="text-[10px] text-gray-400 block">{sub}</span>}
+    </div>
+  );
+}
+
+function ChipGroup({ label, items }: { label: string; items: { key: string; label: string; count: number }[] }) {
+  return (
+    <div>
+      <span className="text-[10px] uppercase tracking-wider text-gray-500 block mb-1">{label}</span>
+      <div className="flex flex-wrap gap-1">
+        {items.map((item) => (
+          <span
+            key={item.key}
+            className={`px-1.5 py-0.5 rounded border font-mono ${
+              item.count > 1 ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-700'
             }`}
-            style={{ width: `${Math.min(100, analysis.coverageEfficiency)}%` }}
-          />
-        </div>
-        <div className="flex justify-between mt-1 text-[10px] text-gray-400">
-          <span>Space utilization: {analysis.spaceUtilization.toFixed(1)}%</span>
-          <span>{analysis.coveredRange.toFixed(0)} / {analysis.coverageSpan.toFixed(0)} mL</span>
-        </div>
+          >
+            {item.label}
+            {item.count > 1 && <span className="ml-1 font-semibold">×{item.count}</span>}
+          </span>
+        ))}
       </div>
-
-      {/* Gap details (collapsed by default for space) */}
-      {hasGaps && (
-        <div className="mt-2 space-y-1">
-          {analysis.gaps.map((gap, i) => (
-            <div key={i} className="flex items-center gap-2 text-[11px]">
-              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                gap.severity === 'major' ? 'bg-red-500' :
-                gap.severity === 'moderate' ? 'bg-orange-500' : 'bg-yellow-500'
-              }`} />
-              <span className="text-gray-600">
-                {gap.startVolume.toFixed(0)}–{gap.endVolume.toFixed(0)} mL
-              </span>
-              <span className={`font-medium ${
-                gap.severity === 'major' ? 'text-red-600' :
-                gap.severity === 'moderate' ? 'text-orange-600' : 'text-yellow-600'
-              }`}>
-                {gap.gapSize.toFixed(0)} mL {gap.severity}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

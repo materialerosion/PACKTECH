@@ -16,6 +16,7 @@ import {
   MATERIAL_NAMES,
 } from '@/types/bottle';
 import { FillRangeService } from '@/services/fillRangeService';
+import DimensionField from '@/components/ui/DimensionField';
 import { Droplets } from 'lucide-react';
 
 interface IndividualEditorProps {
@@ -112,42 +113,48 @@ export default function IndividualEditor({ bottleIndex }: IndividualEditorProps)
       <div className="space-y-3">
         <h4 className="text-xs font-medium text-gray-700 uppercase tracking-wider">Dimensions (mm)</h4>
 
-        <DimensionInput
+        <DimensionField
+          compact
           label="Body Height"
           value={localDims.bodyHeight}
           min={10}
           max={400}
           onChange={(v) => handleDimensionChange('bodyHeight', v)}
         />
-        <DimensionInput
+        <DimensionField
+          compact
           label="Diameter"
           value={localDims.diameter}
           min={10}
           max={200}
           onChange={(v) => handleDimensionChange('diameter', v)}
         />
-        <DimensionInput
+        <DimensionField
+          compact
           label="Neck Height"
           value={localDims.neckHeight}
           min={3}
           max={60}
           onChange={(v) => handleDimensionChange('neckHeight', v)}
         />
-        <DimensionInput
+        <DimensionField
+          compact
           label="Neck Diameter"
           value={localDims.neckDiameter}
           min={5}
           max={100}
           onChange={(v) => handleDimensionChange('neckDiameter', v)}
         />
-        <DimensionInput
+        <DimensionField
+          compact
           label="Shoulder Curve"
           value={localDims.shoulderCurveRadius}
           min={0}
           max={50}
           onChange={(v) => handleDimensionChange('shoulderCurveRadius', v)}
         />
-        <DimensionInput
+        <DimensionField
+          compact
           label="Wall Thickness"
           value={localDims.wallThickness}
           min={0.5}
@@ -155,6 +162,43 @@ export default function IndividualEditor({ bottleIndex }: IndividualEditorProps)
           step={0.1}
           onChange={(v) => handleDimensionChange('wallThickness', v)}
         />
+      </div>
+
+      {/* Plastic Weight */}
+      <div className="space-y-2">
+        <h4 className="text-xs font-medium text-gray-700 uppercase tracking-wider">Plastic Weight (g)</h4>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Weight</label>
+            <input
+              type="number"
+              step={0.01}
+              min={0}
+              value={bottle.plasticWeight ?? ''}
+              onChange={(e) =>
+                handlePropertyChange({
+                  plasticWeight: e.target.value === '' ? undefined : Math.round(parseFloat(e.target.value) * 100) / 100,
+                })
+              }
+              className="input text-sm font-mono"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Tolerance (±)</label>
+            <input
+              type="number"
+              step={0.01}
+              min={0}
+              value={bottle.weightTolerance ?? ''}
+              onChange={(e) =>
+                handlePropertyChange({
+                  weightTolerance: e.target.value === '' ? undefined : Math.round(parseFloat(e.target.value) * 100) / 100,
+                })
+              }
+              className="input text-sm font-mono"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Material & Cap */}
@@ -238,37 +282,6 @@ export default function IndividualEditor({ bottleIndex }: IndividualEditorProps)
         <Droplets className="w-4 h-4" />
         Send to Fill Simulator
       </button>
-    </div>
-  );
-}
-
-// ─── Dimension Input ──────────────────────────────────────────────────
-
-interface DimensionInputProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  onChange: (value: number) => void;
-}
-
-function DimensionInput({ label, value, min, max, step = 1, onChange }: DimensionInputProps) {
-  return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-600">{label}</span>
-        <span className="font-mono text-gray-900">{value.toFixed(step < 1 ? 1 : 0)}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full"
-      />
     </div>
   );
 }

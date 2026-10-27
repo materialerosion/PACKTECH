@@ -14,6 +14,7 @@ import {
   MATERIAL_NAMES,
   DEFAULT_DIMENSIONS 
 } from '@/types';
+import DimensionField from '@/components/ui/DimensionField';
 import { Plus, Copy, Trash2, RotateCcw, Droplets } from 'lucide-react';
 
 export default function BottleGenerator() {
@@ -131,7 +132,7 @@ export default function BottleGenerator() {
           <div className="space-y-4">
             <h3 className="font-medium text-gray-900">Dimensions (mm)</h3>
             
-            <DimensionSlider
+            <DimensionField
               label="Total Height"
               value={localDims.height}
               min={30}
@@ -139,7 +140,7 @@ export default function BottleGenerator() {
               onChange={(v) => handleDimensionChange('height', v)}
             />
             
-            <DimensionSlider
+            <DimensionField
               label="Body Height"
               value={localDims.bodyHeight}
               min={20}
@@ -147,7 +148,7 @@ export default function BottleGenerator() {
               onChange={(v) => handleDimensionChange('bodyHeight', v)}
             />
             
-            <DimensionSlider
+            <DimensionField
               label="Diameter"
               value={localDims.diameter}
               min={20}
@@ -155,7 +156,7 @@ export default function BottleGenerator() {
               onChange={(v) => handleDimensionChange('diameter', v)}
             />
             
-            <DimensionSlider
+            <DimensionField
               label="Neck Height"
               value={localDims.neckHeight}
               min={5}
@@ -163,7 +164,7 @@ export default function BottleGenerator() {
               onChange={(v) => handleDimensionChange('neckHeight', v)}
             />
             
-            <DimensionSlider
+            <DimensionField
               label="Neck Diameter"
               value={localDims.neckDiameter}
               min={10}
@@ -171,7 +172,7 @@ export default function BottleGenerator() {
               onChange={(v) => handleDimensionChange('neckDiameter', v)}
             />
             
-            <DimensionSlider
+            <DimensionField
               label="Shoulder Curve"
               value={localDims.shoulderCurveRadius}
               min={0}
@@ -179,7 +180,7 @@ export default function BottleGenerator() {
               onChange={(v) => handleDimensionChange('shoulderCurveRadius', v)}
             />
             
-            <DimensionSlider
+            <DimensionField
               label="Wall Thickness"
               value={localDims.wallThickness}
               min={0.5}
@@ -309,36 +310,6 @@ export default function BottleGenerator() {
           <p className="text-sm mt-2">Create a new bottle or select one from the library</p>
         </div>
       )}
-    </div>
-  );
-}
-
-// Dimension slider component
-interface DimensionSliderProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  onChange: (value: number) => void;
-}
-
-function DimensionSlider({ label, value, min, max, step = 1, onChange }: DimensionSliderProps) {
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-gray-600">{label}</span>
-        <span className="font-mono text-gray-900">{value.toFixed(step < 1 ? 1 : 0)}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full"
-      />
     </div>
   );
 }

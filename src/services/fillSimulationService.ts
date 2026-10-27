@@ -5,19 +5,22 @@
  * component which runs inside the React Three Fiber render loop.
  */
 
-import { BottleDimensions } from '@/types/bottle';
+import { BottleDimensions, BottleShape } from '@/types/bottle';
 import { Product } from '@/types/product';
 import { v4 as uuidv4 } from 'uuid';
-
 /**
  * Generate a random spawn position above the bottle neck.
- * Products are spawned within 85% of the neck inner radius.
+ * Products are spawned within half the neck inner radius so they drop
+ * cleanly through the opening. `minHeight` lets callers lift the spawn
+ * point above products already piled up at the neck.
  */
-export function getSpawnPosition(dims: BottleDimensions): [number, number, number] {
-  const neckInnerR = (dims.neckDiameter / 2 - dims.wallThickness) * 0.85;
-  const spawnHeight = dims.bodyHeight + 30; // 30mm above bottle top
+export function getSpawnPosition(
+  dims: BottleDimensions,
+  minHeight = 0
+): [number, number, number] {
+  const neckInnerR = Math.max(dims.neckDiameter / 2 - dims.wallThickness, 1) * 0.5;
+  const spawnHeight = Math.max(dims.bodyHeight + 30, minHeight);
   
-  // Random position within circle
   const angle = Math.random() * Math.PI * 2;
   const r = Math.random() * neckInnerR;
   
@@ -26,6 +29,14 @@ export function getSpawnPosition(dims: BottleDimensions): [number, number, numbe
     spawnHeight,
     Math.sin(angle) * r,
   ];
+}
+
+/**
+ * Largest product dimension (mm), used for spawn spacing.
+ */
+export function getProductMaxDimension(product: Product): number {
+  const { length, width, height } = product.dimensions;
+  return Math.max(length, width, height);
 }
 
 /**
@@ -58,13 +69,24 @@ export function generateBodyId(): string {
   return uuidv4();
 }
 
+export type ColliderPrimitiveType = 'cylinder' | 'capsule' | 'cuboid' | 'ball' | 'convex';
+
+export interface ColliderPart {
+  type: ColliderPrimitiveType;
+  /** Collider-specific args (Rapier half-extents / radius conventions); flat xyz point list for 'convex'. */
+  args: number[];
+  /** Optional local offset from the rigid-body origin. */
+  position?: [number, number, number];
+  /** Optional local Euler rotation in radians [x, y, z]. */
+  rotation?: [number, number, number];
+}
+
 /**
  * Get the Rapier collider parameters for a product shape.
- * Returns the collider type and dimensions needed for @react-three/rapier.
+ * Single-shape products return one part; compounds return multiple offset parts.
  */
 export interface ProductColliderParams {
-  type: 'cylinder' | 'capsule' | 'cuboid';
-  args: number[]; // Collider-specific arguments
+  parts: ColliderPart[];
 }
 
 export function getProductColliderParams(product: Product): ProductColliderParams {
@@ -75,45 +97,130 @@ export function getProductColliderParams(product: Product): ProductColliderParam
     case 'round-tablet':
       // Cylinder: halfHeight, radius
       return {
-        type: 'cylinder',
-        args: [height / 2, length / 2],
+        parts: [{ type: 'cylinder', args: [height / 2, length / 2] }],
       };
     case 'capsule':
       // Capsule: halfHeight (of cylinder part), radius
       return {
-        type: 'capsule',
-        args: [(length - width) / 2, width / 2],
+        parts: [{ type: 'capsule', args: [(length - width) / 2, width / 2] }],
       };
-    case 'oblong-tablet':
-      // Approximate as capsule
+    case 'oblong-tablet': {
+      // Stadium extrusion: central cuboid + end cylinders using length × width × height
+      const halfLen = Math.max((length - width) / 2, 0.1);
+      const halfH = height / 2;
+      const halfW = width / 2;
       return {
-        type: 'capsule',
-        args: [(length - height) / 2, height / 2],
+        parts: [
+          { type: 'cuboid', args: [halfLen, halfH, halfW] },
+          {
+            type: 'cylinder',
+            args: [halfH, halfW],
+            position: [halfLen, 0, 0],
+          },
+          {
+            type: 'cylinder',
+            args: [halfH, halfW],
+            position: [-halfLen, 0, 0],
+          },
+        ],
       };
+    }
     case 'gummy':
-      // Cuboid: halfExtents [x, y, z]
       return {
-        type: 'cuboid',
-        args: [length / 2, height / 2, width / 2],
+        parts: [{ type: 'cuboid', args: [length / 2, height / 2, width / 2] }],
       };
     case 'dome':
-      // Semi-sphere approximated as a sphere collider (half height)
-      // Use a cylinder as best approximation for Rapier
       return {
-        type: 'cylinder',
-        args: [height / 2, length / 2],
+        parts: [{ type: 'convex', args: getDomeHullPoints(length, width, height) }],
       };
     case 'gummy-cylinder':
-      // Cylinder: halfHeight, radius
       return {
-        type: 'cylinder',
-        args: [height / 2, length / 2],
+        parts: [{ type: 'cylinder', args: [height / 2, length / 2] }],
       };
     default:
       return {
-        type: 'cuboid',
-        args: [length / 2, height / 2, width / 2],
+        parts: [{ type: 'cuboid', args: [length / 2, height / 2, width / 2] }],
       };
+  }
+}
+
+/**
+ * Points on a half-ellipsoid dome: flat base (length × width) at y = 0, apex at y = height.
+ * Kept coarse: contact cost grows quickly with hull vertex count in dense piles.
+ */
+function getDomeHullPoints(length: number, width: number, height: number): number[] {
+  const points: number[] = [];
+  const segments = 8;
+  const rings = 2;
+  for (let r = 0; r < rings; r++) {
+    const phi = (r / rings) * (Math.PI / 2);
+    const scale = Math.cos(phi);
+    const y = height * Math.sin(phi);
+    for (let s = 0; s < segments; s++) {
+      const theta = (s / segments) * Math.PI * 2;
+      points.push(Math.cos(theta) * (length / 2) * scale, y, Math.sin(theta) * (width / 2) * scale);
+    }
+  }
+  points.push(0, height, 0);
+  return points;
+}
+
+// Shrinks containment samples so products resting against a wall
+// (within solver contact tolerance) still count as inside.
+const SAMPLE_MARGIN = 0.85;
+
+/**
+ * Local-space points used to decide whether a product is inside the bottle.
+ */
+export function getProductSamplePoints(product: Product): [number, number, number][] {
+  const { length, width, height } = product.dimensions;
+  const m = SAMPLE_MARGIN;
+
+  if (product.shape === 'dome') {
+    // The origin is on the flat base, so lift the rim samples into the body too
+    const rimY = height * (1 - m);
+    return [
+      [0, height * 0.4, 0],
+      [(length / 2) * m, rimY, 0],
+      [(-length / 2) * m, rimY, 0],
+      [0, rimY, (width / 2) * m],
+      [0, rimY, (-width / 2) * m],
+      [0, height * m, 0],
+    ];
+  }
+
+  const [hx, hy, hz] = getProductHalfExtents(product).map((v) => v * m);
+  return [
+    [0, 0, 0],
+    [hx, 0, 0],
+    [-hx, 0, 0],
+    [0, hy, 0],
+    [0, -hy, 0],
+    [0, 0, hz],
+    [0, 0, -hz],
+  ];
+}
+
+/**
+ * Approximate local half-extents for containment sampling.
+ */
+export function getProductHalfExtents(product: Product): [number, number, number] {
+  const { shape, dimensions } = product;
+  const { length, width, height } = dimensions;
+  
+  switch (shape) {
+    case 'round-tablet':
+    case 'gummy-cylinder':
+      return [length / 2, height / 2, length / 2];
+    case 'capsule':
+      return [length / 2, width / 2, width / 2];
+    case 'oblong-tablet':
+      return [length / 2, height / 2, width / 2];
+    case 'dome':
+      return [length / 2, height, width / 2];
+    case 'gummy':
+    default:
+      return [length / 2, height / 2, width / 2];
   }
 }
 
@@ -131,38 +238,32 @@ export function getProductMeshParams(product: Product): ProductMeshParams {
   
   switch (shape) {
     case 'round-tablet':
-      // CylinderGeometry: radiusTop, radiusBottom, height, segments
       return {
         geometryType: 'cylinder',
         args: [length / 2, length / 2, height, 16],
       };
     case 'capsule':
-      // CapsuleGeometry: radius, length, capSegments, radialSegments
       return {
         geometryType: 'capsule',
         args: [width / 2, length - width, 8, 16],
       };
     case 'oblong-tablet':
-      // Approximate as capsule
+      // Visual stadium approximates compound collider (length × width × height)
       return {
-        geometryType: 'capsule',
-        args: [height / 2, length - height, 8, 16],
+        geometryType: 'box',
+        args: [length, height, width],
       };
     case 'gummy':
-      // BoxGeometry: width, height, depth
       return {
         geometryType: 'box',
         args: [length, height, width],
       };
     case 'dome':
-      // SphereGeometry rendered as half-sphere visually, but use sphere for simplicity
-      // SphereGeometry: radius, widthSegments, heightSegments, phiStart, phiLength, thetaStart, thetaLength
       return {
         geometryType: 'sphere',
         args: [length / 2, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2],
       };
     case 'gummy-cylinder':
-      // CylinderGeometry: radiusTop, radiusBottom, height, segments
       return {
         geometryType: 'cylinder',
         args: [length / 2, length / 2, height, 16],
@@ -175,34 +276,111 @@ export function getProductMeshParams(product: Product): ProductMeshParams {
   }
 }
 
+export interface InsideBottleOptions {
+  shape?: BottleShape;
+  /** Local-space sample points (product frame); all must be inside. */
+  samplePoints?: [number, number, number][];
+  /** Body orientation as quaternion [x, y, z, w]. */
+  rotation?: [number, number, number, number];
+}
+
 /**
- * Check if a position is inside the bottle bounds.
+ * Transform a local-space point by a quaternion + translation.
+ */
+function transformLocalPoint(
+  local: [number, number, number],
+  position: [number, number, number],
+  rotation: [number, number, number, number]
+): [number, number, number] {
+  const [lx, ly, lz] = local;
+  const [qx, qy, qz, qw] = rotation;
+  
+  // q * v
+  const ix = qw * lx + qy * lz - qz * ly;
+  const iy = qw * ly + qz * lx - qx * lz;
+  const iz = qw * lz + qx * ly - qy * lx;
+  const iw = -qx * lx - qy * ly - qz * lz;
+  
+  // (q * v) * q^-1
+  return [
+    position[0] + ix * qw + iw * -qx + iy * -qz - iz * -qy,
+    position[1] + iy * qw + iw * -qy + iz * -qx - ix * -qz,
+    position[2] + iz * qw + iw * -qz + ix * -qy - iy * -qx,
+  ];
+}
+
+/**
+ * Check if a single world-space point lies within the bottle's outer envelope.
+ * Products can only leave through the neck, so points pressed into the wall or
+ * floor by the pile (solver penetration) still count as inside.
+ */
+export function isPointInsideBottle(
+  position: [number, number, number],
+  dims: BottleDimensions,
+  shape: BottleShape = 'boston-round'
+): boolean {
+  const [x, y, z] = position;
+  const bodyRx = dims.diameter / 2;
+  const widthRatio = shape === 'oval' ? (dims.widthRatio ?? 0.6) : 1;
+  const bodyRz = bodyRx * widthRatio;
+  const neckR = dims.neckDiameter / 2;
+  const shoulderHeight = Math.min(
+    Math.max(dims.shoulderCurveRadius, 2),
+    Math.max((dims.bodyHeight - dims.neckHeight) * 0.45, 2)
+  );
+  const bodyH = dims.bodyHeight - dims.neckHeight;
+  const shoulderStartY = bodyH - shoulderHeight;
+  const totalH = dims.bodyHeight;
+  
+  if (y < 0) return false;
+  if (y > totalH * 1.02) return false;
+  
+  // Neck region (circular)
+  if (y >= bodyH) {
+    return Math.sqrt(x * x + z * z) <= neckR;
+  }
+  
+  // Shoulder loft: lerp elliptical body → circular neck
+  if (y >= shoulderStartY) {
+    const t = (y - shoulderStartY) / shoulderHeight;
+    const angle = t * (Math.PI / 2);
+    const rx = bodyRx - (bodyRx - neckR) * Math.sin(angle);
+    const rz = bodyRz - (bodyRz - neckR) * Math.sin(angle);
+    if (rx <= 0 || rz <= 0) return false;
+    return (x * x) / (rx * rx) + (z * z) / (rz * rz) <= 1;
+  }
+  
+  // Body cavity
+  if (bodyRx <= 0 || bodyRz <= 0) return false;
+  return (x * x) / (bodyRx * bodyRx) + (z * z) / (bodyRz * bodyRz) <= 1;
+}
+
+/**
+ * Check if a product body is fully inside the bottle.
+ * When samplePoints + rotation are provided, every sample must be inside
+ * so partially-through-wall products are not counted as inside.
  */
 export function isInsideBottle(
   position: [number, number, number],
-  dims: BottleDimensions
+  dims: BottleDimensions,
+  options?: InsideBottleOptions
 ): boolean {
-  const [x, y, z] = position;
-  const wt = dims.wallThickness;
-  const floorThickness = Math.max(wt * 3, 3);
-  const bodyR = dims.diameter / 2;
-  const neckR = dims.neckDiameter / 2;
-  const bodyH = dims.bodyHeight - dims.neckHeight;
-  const totalH = dims.bodyHeight;
+  const shape = options?.shape ?? 'boston-round';
+  const samplePoints = options?.samplePoints;
+  const rotation = options?.rotation ?? [0, 0, 0, 1];
   
-  // Must be above floor slab
-  if (y < floorThickness) return false;
+  if (!samplePoints) {
+    return isPointInsideBottle(position, dims, shape);
+  }
   
-  // Must be below top (2% tolerance)
-  if (y > totalH * 1.02) return false;
+  for (const local of samplePoints) {
+    const world = transformLocalPoint(local, position, rotation);
+    if (!isPointInsideBottle(world, dims, shape)) {
+      return false;
+    }
+  }
   
-  // Radial check
-  const horizontalDist = Math.sqrt(x * x + z * z);
-  const maxR = y < bodyH
-    ? bodyR - wt * 0.75
-    : neckR - wt * 0.75;
-  
-  return horizontalDist <= maxR;
+  return true;
 }
 
 /**
