@@ -5,7 +5,7 @@
  * Supports circular and oval (elliptical) body cross-sections.
  */
 
-import { Bottle, BottleDimensions, BottleShape } from '@/types/bottle';
+import { Bottle, BottleDimensions, BottleShape, DrawingProfile } from '@/types/bottle';
 
 export interface ColliderGeometry {
   vertices: Float32Array;
@@ -337,6 +337,40 @@ export function buildBottleCollisionShell(
     neckOuterR, neckOuterR,
     neckTopY, SEGMENTS
   );
+
+  return {
+    vertices: new Float32Array(vertices),
+    indices: new Uint32Array(indices),
+  };
+}
+
+/**
+ * Collision shell for a drawing profile: the cavity wall from the floor edge up
+ * the bore, plus the top rim. The floor is left to a box collider at
+ * `profile.inner[0][1]`.
+ */
+export function buildProfileCollisionShell(profile: DrawingProfile): ColliderGeometry {
+  const vertices: number[] = [];
+  const indices: number[] = [];
+  const wall = profile.inner.filter(([r]) => r > 0.01);
+  const t = profile.wallThickness;
+
+  const [firstR, firstY] = wall[0];
+  let prevStart = vertices.length / 3;
+  generateRing(vertices, firstR, firstR, firstY - t, SEGMENTS);
+  for (const [r, y] of wall) {
+    const start = vertices.length / 3;
+    generateRing(vertices, r, r, y, SEGMENTS);
+    connectRings(indices, start, prevStart, SEGMENTS);
+    prevStart = start;
+  }
+
+  const [boreR, topY] = wall[wall.length - 1];
+  const outerTopR = profile.outer.reduce(
+    (m, [r, y]) => (y >= topY - 3 ? Math.max(m, r) : m),
+    boreR
+  );
+  generateAnnulus(vertices, indices, boreR, boreR, outerTopR, outerTopR, topY, SEGMENTS);
 
   return {
     vertices: new Float32Array(vertices),

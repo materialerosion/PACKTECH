@@ -79,6 +79,10 @@ export interface Bottle {
   plasticWeight?: number;      // g
   weightTolerance?: number;    // ± g
 
+  // Exact geometry from a supplier drawing; overrides the parametric shape
+  profile?: DrawingProfile;
+  closure?: ClosureDrawing;
+
   // Calculated values
   volume: number;              // ml (calculated)
   surfaceArea: number;         // cm² (calculated)
@@ -88,6 +92,48 @@ export interface Bottle {
   updatedAt: Date;
   isCustom: boolean;
   presetId?: string;
+}
+
+/** Point on a revolved profile: [radius, height] in mm, base at height 0. */
+export type ProfilePoint = [number, number];
+
+/**
+ * Bottle geometry traced from a 2D drawing. Both point lists run bottom to top
+ * with non-decreasing height.
+ */
+export interface DrawingProfile {
+  source: string;
+  /** Outside surface, from the base centre (r = 0) to the top of the finish. */
+  outer: ProfilePoint[];
+  /** Cavity, from the floor centre (r = 0) to the top of the bore. */
+  inner: ProfilePoint[];
+  /** Body wall thickness used to derive `inner` (mm). */
+  wallThickness: number;
+  thread?: {
+    rootRadius: number;
+    crestRadius: number;
+    startY: number; // lowest point of the helix
+    endY: number;   // highest point of the helix
+    pitch: number;
+  };
+  labelPanel?: { bottomY: number; height: number };
+}
+
+/** Closure geometry traced from a 2D drawing (mm). */
+export interface ClosureDrawing {
+  source: string;
+  topDiameter: number;
+  bottomDiameter: number;
+  height: number;
+  /** Plain band at the bottom of the skirt, below the knurl. */
+  bottomBandHeight: number;
+  ribCount: number;
+  ribDepth: number;
+  /** How far the skirt reaches below the top of the bottle finish. */
+  skirtDepth: number;
+  /** Lines embossed on the top panel, outer ring first. */
+  topText?: { arcTop: string; arcBottom: string; center: string[] };
+  material: string;
 }
 
 // Default bottle dimensions for different shapes

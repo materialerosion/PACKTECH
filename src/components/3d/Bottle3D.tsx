@@ -7,8 +7,15 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { Bottle } from '@/types';
+import { Bottle, ClosureDrawing, DrawingProfile } from '@/types';
 import { useStore } from '@/store';
+import { profileTop } from '@/services/drawingProfile';
+import {
+  createClosureGeometries,
+  createClosureTopTexture,
+  createProfileBodyGeometry,
+  createThreadGeometry,
+} from './drawingGeometry';
 
 interface Bottle3DProps {
   bottle: Bottle;
@@ -67,6 +74,42 @@ export default function Bottle3D({
   };
   
   const dims = bottle.dimensions;
+
+  if (bottle.profile) {
+    return (
+      <group ref={meshRef} position={position} onClick={handleClick}>
+        <DrawingBottle
+          profile={bottle.profile}
+          closure={bottle.closure}
+          bodyColor={bottle.bodyColor}
+          capColor={bottle.capColor}
+          opacity={bottle.opacity}
+        />
+        {isSelected && (
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[dims.diameter / 2 + 5, dims.diameter / 2 + 8, 32]} />
+            <meshBasicMaterial color="#3b82f6" transparent opacity={0.5} />
+          </mesh>
+        )}
+        {showMeasurements && (
+          <Html
+            center
+            position={[
+              0,
+              profileTop(bottle.profile) +
+                (bottle.closure ? bottle.closure.height - bottle.closure.skirtDepth : 0) +
+                20,
+              0,
+            ]}
+          >
+            <div className="bg-white/90 px-2 py-1 rounded shadow text-xs font-medium whitespace-nowrap">
+              {bottle.name}
+            </div>
+          </Html>
+        )}
+      </group>
+    );
+  }
   
   // Calculate body height used in geometry (body minus neck for shapes that include shoulder)
   const bodyOnlyHeight = dims.bodyHeight - dims.neckHeight;
@@ -160,6 +203,110 @@ export default function Bottle3D({
             {bottle.name}
           </div>
         </Html>
+      )}
+    </group>
+  );
+}
+
+/**
+ * Bottle traced from a drawing: revolved shell, helical thread, label panel
+ * edges, and the drawn closure seated on the finish.
+ */
+function DrawingBottle({
+  profile,
+  closure,
+  bodyColor,
+  capColor,
+  opacity,
+}: {
+  profile: DrawingProfile;
+  closure?: ClosureDrawing;
+  bodyColor: string;
+  capColor: string;
+  opacity: number;
+}) {
+  const body = useMemo(() => createProfileBodyGeometry(profile), [profile]);
+  const thread = useMemo(() => createThreadGeometry(profile), [profile]);
+
+  // Satin blow-moulded HDPE rather than glossy plastic
+  const material = useMemo(
+    () =>
+      new THREE.MeshPhysicalMaterial({
+        color: bodyColor,
+        roughness: 0.55,
+        metalness: 0,
+        clearcoat: 0.05,
+        sheen: 0.3,
+        sheenRoughness: 0.8,
+        transparent: opacity < 1,
+        opacity,
+        side: THREE.DoubleSide,
+      }),
+    [bodyColor, opacity]
+  );
+
+  const labelEdges = useMemo(() => {
+    if (!profile.labelPanel) return [];
+    const r = profile.outer.reduce((m, [pr]) => Math.max(m, pr), 0) + 0.15;
+    const { bottomY, height } = profile.labelPanel;
+    return [bottomY, bottomY + height].map((y) => {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i < 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+      }
+      return new THREE.BufferGeometry().setFromPoints(pts);
+    });
+  }, [profile]);
+
+  return (
+    <group>
+      <mesh geometry={body} material={material} castShadow receiveShadow />
+      {thread && <mesh geometry={thread} material={material} castShadow />}
+      {labelEdges.map((geo, i) => (
+        <lineLoop key={i} geometry={geo}>
+          <lineBasicMaterial color="#94a3b8" transparent opacity={0.55} />
+        </lineLoop>
+      ))}
+      {closure && (
+        <group position={[0, profileTop(profile) - closure.skirtDepth, 0]}>
+          <ClosureModel closure={closure} color={capColor} />
+        </group>
+      )}
+    </group>
+  );
+}
+
+/** Closure from a drawing, with y = 0 at the bottom of the skirt. */
+export function ClosureModel({ closure, color }: { closure: ClosureDrawing; color: string }) {
+  const parts = useMemo(() => createClosureGeometries(closure), [closure]);
+  const topTexture = useMemo(() => createClosureTopTexture(closure), [closure]);
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.6,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    [color]
+  );
+
+  return (
+    <group>
+      <mesh geometry={parts.skirt} material={material} castShadow receiveShadow />
+      <mesh geometry={parts.band} material={material} castShadow />
+      <mesh geometry={parts.top} material={material} castShadow receiveShadow />
+      {topTexture && (
+        <mesh geometry={parts.topPanel}>
+          <meshStandardMaterial
+            map={topTexture}
+            transparent
+            roughness={0.6}
+            polygonOffset
+            polygonOffsetFactor={-1}
+          />
+        </mesh>
       )}
     </group>
   );

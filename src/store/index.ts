@@ -162,6 +162,22 @@ interface AppActions {
 type Store = AppState & AppActions;
 
 // Initial state
+/**
+ * Apply edits to a bottle in place. Hand edits to dimensions or shape replace
+ * drawing-based geometry, which can't follow parametric changes.
+ */
+function applyBottleUpdates(bottle: Bottle, updates: Partial<Bottle>) {
+  Object.assign(bottle, updates);
+  if ((updates.dimensions || updates.shape) && !updates.profile) {
+    delete bottle.profile;
+  }
+  bottle.updatedAt = new Date();
+  if (updates.dimensions || updates.shape || updates.profile) {
+    bottle.volume = VolumeCalculator.calculate(bottle);
+    bottle.surfaceArea = VolumeCalculator.calculateSurfaceArea(bottle);
+  }
+}
+
 const initialState: AppState = {
   bottles: {},
   activeBottleId: null,
@@ -258,14 +274,7 @@ export const useStore = create<Store>()(
       updateBottle: (id, updates) => {
         set((state) => {
           if (state.bottles[id]) {
-            Object.assign(state.bottles[id], updates);
-            state.bottles[id].updatedAt = new Date();
-            
-            // Recalculate volume if dimensions changed
-            if (updates.dimensions || updates.shape) {
-              state.bottles[id].volume = VolumeCalculator.calculate(state.bottles[id]);
-              state.bottles[id].surfaceArea = VolumeCalculator.calculateSurfaceArea(state.bottles[id]);
-            }
+            applyBottleUpdates(state.bottles[id], updates);
           }
         });
       },
@@ -571,15 +580,7 @@ export const useStore = create<Store>()(
         set((state) => {
           const series = state.bottleSeries[seriesId];
           if (series && series.bottles[bottleIndex]) {
-            Object.assign(series.bottles[bottleIndex], updates);
-            series.bottles[bottleIndex].updatedAt = new Date();
-            
-            // Recalculate volume if dimensions changed
-            if (updates.dimensions || updates.shape) {
-              series.bottles[bottleIndex].volume = VolumeCalculator.calculate(series.bottles[bottleIndex]);
-              series.bottles[bottleIndex].surfaceArea = VolumeCalculator.calculateSurfaceArea(series.bottles[bottleIndex]);
-            }
-            
+            applyBottleUpdates(series.bottles[bottleIndex], updates);
             series.updatedAt = new Date();
           }
         });
@@ -591,13 +592,7 @@ export const useStore = create<Store>()(
           if (series) {
             for (const index of bottleIndices) {
               if (series.bottles[index]) {
-                Object.assign(series.bottles[index], updates);
-                series.bottles[index].updatedAt = new Date();
-                
-                if (updates.dimensions || updates.shape) {
-                  series.bottles[index].volume = VolumeCalculator.calculate(series.bottles[index]);
-                  series.bottles[index].surfaceArea = VolumeCalculator.calculateSurfaceArea(series.bottles[index]);
-                }
+                applyBottleUpdates(series.bottles[index], updates);
               }
             }
             series.updatedAt = new Date();

@@ -128,6 +128,7 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
         shape: fillSim.fillBottle.shape,
         samplePoints: getProductSamplePoints(fillSim.fillProduct),
         rotation: [r.x, r.y, r.z, r.w],
+        profile: fillSim.fillBottle.profile,
       });
     },
     [fillSim.fillBottle, fillSim.fillProduct]

@@ -5,9 +5,11 @@
  * component which runs inside the React Three Fiber render loop.
  */
 
-import { BottleDimensions, BottleShape } from '@/types/bottle';
+import { BottleDimensions, BottleShape, DrawingProfile } from '@/types/bottle';
 import { Product } from '@/types/product';
 import { v4 as uuidv4 } from 'uuid';
+import { profileTop, radiusAt } from '@/services/drawingProfile';
+
 /**
  * Generate a random spawn position above the bottle neck.
  * Products are spawned within half the neck inner radius so they drop
@@ -282,6 +284,8 @@ export interface InsideBottleOptions {
   samplePoints?: [number, number, number][];
   /** Body orientation as quaternion [x, y, z, w]. */
   rotation?: [number, number, number, number];
+  /** Drawing profile; when set, its outer envelope replaces the parametric shape. */
+  profile?: DrawingProfile;
 }
 
 /**
@@ -355,6 +359,22 @@ export function isPointInsideBottle(
   return (x * x) / (bodyRx * bodyRx) + (z * z) / (bodyRz * bodyRz) <= 1;
 }
 
+/** Same envelope test as `isPointInsideBottle`, against a drawing profile. */
+const PROFILE_FLOOR_TOLERANCE = 1;
+
+export function isPointInsideProfile(
+  position: [number, number, number],
+  profile: DrawingProfile
+): boolean {
+  const [x, y, z] = position;
+  const top = profileTop(profile);
+  // Drawing walls are thin (<1 mm), so sample points that overhang the
+  // collision hull can dip just below the outer base while resting on the floor.
+  if (y < -PROFILE_FLOOR_TOLERANCE || y > top * 1.02) return false;
+  const floorY = profile.inner[0][1];
+  return Math.hypot(x, z) <= radiusAt(profile.outer, Math.min(Math.max(y, floorY), top));
+}
+
 /**
  * Check if a product body is fully inside the bottle.
  * When samplePoints + rotation are provided, every sample must be inside
@@ -368,14 +388,17 @@ export function isInsideBottle(
   const shape = options?.shape ?? 'boston-round';
   const samplePoints = options?.samplePoints;
   const rotation = options?.rotation ?? [0, 0, 0, 1];
+  const profile = options?.profile;
+  const inside = (p: [number, number, number]) =>
+    profile ? isPointInsideProfile(p, profile) : isPointInsideBottle(p, dims, shape);
   
   if (!samplePoints) {
-    return isPointInsideBottle(position, dims, shape);
+    return inside(position);
   }
   
   for (const local of samplePoints) {
     const world = transformLocalPoint(local, position, rotation);
-    if (!isPointInsideBottle(world, dims, shape)) {
+    if (!inside(world)) {
       return false;
     }
   }
