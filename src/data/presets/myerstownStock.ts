@@ -4,7 +4,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Bottle, ClosureDrawing, DEFAULT_DIMENSIONS } from '@/types';
+import { Bottle, CapStyle, ClosureDrawing, DEFAULT_DIMENSIONS } from '@/types';
 import { VolumeCalculator } from '@/services/volumeCalculator';
 import { BottleDrawingSpec, INCH, buildDrawingProfile } from '@/services/drawingProfile';
 
@@ -17,7 +17,48 @@ export interface StockBottleSpec {
   neckFinish: string;
   drawing?: BottleDrawingSpec;
   closure?: ClosureDrawing;
+  capStyle?: CapStyle;
 }
+
+/** 70.5 mL (60cc) bottle drawing with M33-SP400 finish detail (section A-A), mm. */
+const DRAWING_70: BottleDrawingSpec = {
+  source: '70.5 mL (60cc) bottle drawing, M33-SP400 finish detail',
+  bodyDiameter: 39.67,
+  height: 74.55,
+  // Heel radius not dimensioned: read off the elevation view
+  baseRadius: 1.57,
+  shoulderRadius: 3.91,
+  // No bead: the finish flares straight into the neck, which meets the shoulder
+  // so the body is straight up to 58.65
+  neckDiameter: 32.03,
+  neckCollarHeight: 1.75,
+  beadDiameter: 32.03,
+  beadHeight: 0,
+  finishHeight: 10.24,
+  threadDiameter: 31.83,
+  rootDiameter: 29.44,
+  boreDiameter: 26.34,
+  threadStart: 1.17,
+  lipRadius: 0.38,
+  threadPitch: INCH / 6, // GPI 33-400: 6 TPI (per closure drawing)
+  threadTurns: 1.25,
+  labelPanel: { fromBase: 3.91, height: 49.25 },
+};
+
+/** 33-400 push-down-and-turn child-resistant closure drawing (REV-D). */
+const CLOSURE_33_400_CR: ClosureDrawing = {
+  source: '33 mm-400 CR closure drawing REV-D (inner and outer injection PP)',
+  topDiameter: 1.510 * INCH,
+  bottomDiameter: 1.535 * INCH,
+  height: 0.684 * INCH,
+  bottomBandHeight: 0.064 * INCH,
+  ribCount: 80,
+  ribDepth: 0.008 * INCH,
+  // Closure "H" (.381–.399) plus the depressed bottom band
+  skirtDepth: (0.39 + 0.064) * INCH,
+  topText: { arcTop: 'PUSH DOWN & TURN', arcBottom: 'TO OPEN', center: ['CLOSE', 'TIGHTLY'] },
+  material: 'PP',
+};
 
 /** 140.5 mL bottle drawing with finish detail (section A-A); inches converted to mm. */
 const DRAWING_140: BottleDrawingSpec = {
@@ -58,8 +99,8 @@ const CLOSURE_38_400_CR: ClosureDrawing = {
 };
 
 export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
-  { capacity: 70.5,  plasticWeight: 10,   weightTolerance: 1,   diameter: 39.67, height: 74.55,  neckFinish: 'M33-SP400' },
-  { capacity: 140.5, plasticWeight: 12.9,                       diameter: 50.62, height: 87.17,  neckFinish: 'L38-400 Special', drawing: DRAWING_140, closure: CLOSURE_38_400_CR },
+  { capacity: 70.5,  plasticWeight: 10,   weightTolerance: 1,   diameter: 39.67, height: 74.55,  neckFinish: 'M33-SP400', drawing: DRAWING_70, closure: CLOSURE_33_400_CR, capStyle: 'child-resistant' },
+  { capacity: 140.5, plasticWeight: 12.9,                       diameter: 50.62, height: 87.17,  neckFinish: 'L38-400 Special', drawing: DRAWING_140, closure: CLOSURE_38_400_CR, capStyle: 'child-resistant' },
   { capacity: 237,   plasticWeight: 19.5, weightTolerance: 1,   diameter: 60.2,  height: 101.6,  neckFinish: 'M45SP400' },
   { capacity: 250,   plasticWeight: 27.5, weightTolerance: 2,   diameter: 63.91, height: 119.08, neckFinish: 'L45SP400' },
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400' },
@@ -124,7 +165,7 @@ export function buildMyerstownBottles(template?: Partial<Bottle>): Bottle[] {
       name: `${spec.capacity} mL`,
       shape,
       dimensions: { ...baseDims, ...stockDimensions(spec) },
-      capStyle: spec.closure ? 'child-resistant' : template?.capStyle ?? 'screw-cap',
+      capStyle: spec.capStyle ?? template?.capStyle ?? 'screw-cap',
       capColor: template?.capColor ?? '#FFFFFF',
       bodyColor: template?.bodyColor ?? '#FFFFFF',
       material: 'HDPE',

@@ -120,6 +120,7 @@ interface AppActions {
   toggleGrid: () => void;
   toggleMeasurements: () => void;
   setViewMode: (mode: ViewMode) => void;
+  setHeroBottle: (id: string | null) => void;
   selectBottle: (id: string, multi?: boolean) => void;
   clearSelection: () => void;
   setLoading: (loading: boolean) => void;
@@ -206,6 +207,7 @@ const initialState: AppState = {
     showMeasurements: true,
     viewMode: '3d',
     selectedBottleIds: [],
+    heroBottleId: null,
     isLoading: false,
     error: null,
   },
@@ -456,6 +458,13 @@ export const useStore = create<Store>()(
       setActiveTab: (tab) => {
         set((state) => {
           state.ui.activeTab = tab;
+          state.ui.heroBottleId = null;
+        });
+      },
+      
+      setHeroBottle: (id) => {
+        set((state) => {
+          state.ui.heroBottleId = id;
         });
       },
       
@@ -573,6 +582,7 @@ export const useStore = create<Store>()(
       setActiveSeries: (id) => {
         set((state) => {
           state.activeSeriesId = id;
+          state.ui.heroBottleId = null;
         });
       },
       

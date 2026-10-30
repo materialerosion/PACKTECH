@@ -3,13 +3,13 @@
  * Control panel for bottle parameters and lineup settings
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '@/store';
 import { AnimatePresence, motion } from 'framer-motion';
 import BottleGenerator from '../bottle-generator/BottleGenerator';
 import SeriesGenerator from '../lineup-builder/SeriesGenerator';
 import BatchEditor from '../lineup-builder/BatchEditor';
-import IndividualEditor from '../lineup-builder/IndividualEditor';
+import HeroBottleEditor from '../lineup-builder/HeroBottleEditor';
 import SeriesSelector from '../comparison-mode/SeriesSelector';
 import PresetLibrary from '../presets/PresetLibrary';
 import ExportPanel from '../export/ExportPanel';
@@ -18,9 +18,19 @@ import FillSimulatorControls from '../fill-simulator/FillSimulatorControls';
 type LineupSubTab = 'generate' | 'batch' | 'individual';
 
 export default function Sidebar() {
-  const { ui } = useStore();
-  const [lineupSubTab, setLineupSubTab] = useState<LineupSubTab>('generate');
-  const [editBottleIndex, setEditBottleIndex] = useState<number>(0);
+  const { ui, setHeroBottle } = useStore();
+  const [lineupSubTab, setSubTab] = useState<LineupSubTab>('generate');
+
+  // A hero picked by clicking a bottle in the 3D view opens Edit Bottle
+  useEffect(() => {
+    if (ui.heroBottleId) setSubTab('individual');
+  }, [ui.heroBottleId]);
+
+  // The hero focus only lives in Edit Bottle
+  const setLineupSubTab = (tab: LineupSubTab) => {
+    if (tab !== 'individual') setHeroBottle(null);
+    setSubTab(tab);
+  };
 
   const renderContent = () => {
     switch (ui.activeTab) {
@@ -51,21 +61,7 @@ export default function Sidebar() {
             {/* Sub-tab content */}
             {lineupSubTab === 'generate' && <SeriesGenerator />}
             {lineupSubTab === 'batch' && <BatchEditor />}
-            {lineupSubTab === 'individual' && (
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-gray-600 font-medium">Bottle Index</label>
-                  <input
-                    type="number"
-                    value={editBottleIndex + 1}
-                    onChange={(e) => setEditBottleIndex(Math.max(0, (parseInt(e.target.value) || 1) - 1))}
-                    min={1}
-                    className="input text-sm"
-                  />
-                </div>
-                <IndividualEditor bottleIndex={editBottleIndex} />
-              </div>
-            )}
+            {lineupSubTab === 'individual' && <HeroBottleEditor />}
           </div>
         );
       case 'comparison':

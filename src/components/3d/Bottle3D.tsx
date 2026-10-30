@@ -22,13 +22,21 @@ interface Bottle3DProps {
   position: [number, number, number];
   isSelected?: boolean;
   showMeasurements?: boolean;
+  /** Render as a faded ghost behind a hero bottle. */
+  dimmed?: boolean;
+  /** Replaces the default click behaviour (making the bottle the active library bottle). */
+  onSelect?: () => void;
 }
+
+const DIMMED_OPACITY = 0.12;
 
 export default function Bottle3D({ 
   bottle, 
   position, 
   isSelected = false,
-  showMeasurements = false 
+  showMeasurements = false,
+  dimmed = false,
+  onSelect,
 }: Bottle3DProps) {
   const meshRef = useRef<THREE.Group>(null);
   const { setActiveBottle } = useStore();
@@ -40,26 +48,32 @@ export default function Bottle3D({
     return generateBottleGeometry(bottle);
   }, [bottle.shape, dimensionsKey, bottle.capStyle]);
   
+  const opacity = dimmed ? DIMMED_OPACITY : bottle.opacity;
+
   // Materials
   const bodyMaterial = useMemo(() => {
     return new THREE.MeshPhysicalMaterial({
       color: bottle.bodyColor,
-      transparent: bottle.opacity < 1,
-      opacity: bottle.opacity,
+      transparent: opacity < 1,
+      opacity,
+      depthWrite: !dimmed,
       roughness: 0.2,
       metalness: 0,
       clearcoat: 0.3,
       clearcoatRoughness: 0.2,
     });
-  }, [bottle.bodyColor, bottle.opacity]);
+  }, [bottle.bodyColor, opacity, dimmed]);
   
   const capMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
       color: bottle.capColor,
+      transparent: dimmed,
+      opacity: dimmed ? DIMMED_OPACITY : 1,
+      depthWrite: !dimmed,
       roughness: 0.5,
       metalness: 0.1,
     });
-  }, [bottle.capColor]);
+  }, [bottle.capColor, dimmed]);
   
   // Selection highlight animation
   useFrame((state) => {
@@ -70,7 +84,11 @@ export default function Bottle3D({
   
   const handleClick = (e: any) => {
     e.stopPropagation?.();
-    setActiveBottle(bottle.id);
+    if (onSelect) {
+      onSelect();
+    } else {
+      setActiveBottle(bottle.id);
+    }
   };
   
   const dims = bottle.dimensions;
@@ -83,7 +101,8 @@ export default function Bottle3D({
           closure={bottle.closure}
           bodyColor={bottle.bodyColor}
           capColor={bottle.capColor}
-          opacity={bottle.opacity}
+          opacity={opacity}
+          dimmed={dimmed}
         />
         {isSelected && (
           <mesh rotation={[-Math.PI / 2, 0, 0]}>
@@ -137,7 +156,7 @@ export default function Bottle3D({
       <mesh
         geometry={bodyGeometry}
         material={bodyMaterial}
-        castShadow
+        castShadow={!dimmed}
         receiveShadow
         position={[0, 0, 0]}
       />
@@ -146,7 +165,7 @@ export default function Bottle3D({
       <mesh
         geometry={neckGeometry}
         material={bodyMaterial}
-        castShadow
+        castShadow={!dimmed}
         position={[0, bodyOnlyHeight, 0]}
       />
       
@@ -154,7 +173,7 @@ export default function Bottle3D({
       <mesh
         geometry={capGeometry}
         material={capMaterial}
-        castShadow
+        castShadow={!dimmed}
         position={[0, bodyOnlyHeight + dims.neckHeight + effectiveCapHeight / 2, 0]}
       />
       
@@ -167,7 +186,7 @@ export default function Bottle3D({
       )}
       
       {/* Label zones */}
-      {bottle.labelZones.map((zone) => (
+      {!dimmed && bottle.labelZones.map((zone) => (
         <mesh
           key={zone.id}
           position={[0, bodyOnlyHeight - zone.topOffset - zone.height / 2, 0]}
@@ -218,12 +237,14 @@ function DrawingBottle({
   bodyColor,
   capColor,
   opacity,
+  dimmed,
 }: {
   profile: DrawingProfile;
   closure?: ClosureDrawing;
   bodyColor: string;
   capColor: string;
   opacity: number;
+  dimmed: boolean;
 }) {
   const body = useMemo(() => createProfileBodyGeometry(profile), [profile]);
   const thread = useMemo(() => createThreadGeometry(profile), [profile]);
@@ -240,9 +261,10 @@ function DrawingBottle({
         sheenRoughness: 0.8,
         transparent: opacity < 1,
         opacity,
+        depthWrite: !dimmed,
         side: THREE.DoubleSide,
       }),
-    [bodyColor, opacity]
+    [bodyColor, opacity, dimmed]
   );
 
   const labelEdges = useMemo(() => {
@@ -261,16 +283,16 @@ function DrawingBottle({
 
   return (
     <group>
-      <mesh geometry={body} material={material} castShadow receiveShadow />
-      {thread && <mesh geometry={thread} material={material} castShadow />}
-      {labelEdges.map((geo, i) => (
+      <mesh geometry={body} material={material} castShadow={!dimmed} receiveShadow />
+      {thread && <mesh geometry={thread} material={material} castShadow={!dimmed} />}
+      {!dimmed && labelEdges.map((geo, i) => (
         <lineLoop key={i} geometry={geo}>
           <lineBasicMaterial color="#94a3b8" transparent opacity={0.55} />
         </lineLoop>
       ))}
       {closure && (
         <group position={[0, profileTop(profile) - closure.skirtDepth, 0]}>
-          <ClosureModel closure={closure} color={capColor} />
+          <ClosureModel closure={closure} color={capColor} opacity={dimmed ? opacity : 1} />
         </group>
       )}
     </group>
@@ -278,26 +300,38 @@ function DrawingBottle({
 }
 
 /** Closure from a drawing, with y = 0 at the bottom of the skirt. */
-export function ClosureModel({ closure, color }: { closure: ClosureDrawing; color: string }) {
+export function ClosureModel({
+  closure,
+  color,
+  opacity = 1,
+}: {
+  closure: ClosureDrawing;
+  color: string;
+  opacity?: number;
+}) {
   const parts = useMemo(() => createClosureGeometries(closure), [closure]);
   const topTexture = useMemo(() => createClosureTopTexture(closure), [closure]);
+  const faded = opacity < 1;
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
         color,
+        transparent: faded,
+        opacity,
+        depthWrite: !faded,
         roughness: 0.6,
         metalness: 0,
         side: THREE.DoubleSide,
       }),
-    [color]
+    [color, opacity, faded]
   );
 
   return (
     <group>
-      <mesh geometry={parts.skirt} material={material} castShadow receiveShadow />
-      <mesh geometry={parts.band} material={material} castShadow />
-      <mesh geometry={parts.top} material={material} castShadow receiveShadow />
-      {topTexture && (
+      <mesh geometry={parts.skirt} material={material} castShadow={!faded} receiveShadow />
+      <mesh geometry={parts.band} material={material} castShadow={!faded} />
+      <mesh geometry={parts.top} material={material} castShadow={!faded} receiveShadow />
+      {topTexture && !faded && (
         <mesh geometry={parts.topPanel}>
           <meshStandardMaterial
             map={topTexture}

@@ -25,6 +25,8 @@ export interface UIState {
   showMeasurements: boolean;
   viewMode: ViewMode;
   selectedBottleIds: string[];
+  /** Series bottle focused in the Lineup Builder's Edit Bottle tab; null shows the full lineup. */
+  heroBottleId: string | null;
   isLoading: boolean;
   error: string | null;
 }
