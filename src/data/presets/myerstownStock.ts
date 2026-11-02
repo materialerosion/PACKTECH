@@ -118,7 +118,7 @@ const DRAWING_400: BottleDrawingSpec = {
   pushUp: { depth: 0.08 * INCH, diameter: 2.3 * INCH },
 };
 
-/** 625 mL (625cc straight sided, PET) drawing 625PS1XX45L400-E rev F, same family as the 250/400 mL. */
+/** 625 mL (625cc straight sided) drawing 625PS1XX45L400-E rev F, same family as the 250/400 mL; run in HDPE. */
 const DRAWING_625: BottleDrawingSpec = {
   ...DRAWING_250,
   source: '625 mL PET bottle drawing 625PS1XX45L400-E rev F, L45SP400 finish detail',
@@ -325,7 +325,7 @@ export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400', drawing: DRAWING_335, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400', drawing: DRAWING_400, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400', drawing: DRAWING_548, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
-  { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400', drawing: DRAWING_625, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top', material: 'PET' },
+  { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400', drawing: DRAWING_625, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400', drawing: DRAWING_648, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
 ];
 
