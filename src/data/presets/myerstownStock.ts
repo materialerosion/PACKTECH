@@ -4,9 +4,15 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Bottle, CapStyle, ClosureDrawing, DEFAULT_DIMENSIONS } from '@/types';
+import { Bottle, BottleMaterial, CapStyle, ClosureDrawing, DEFAULT_DIMENSIONS } from '@/types';
 import { VolumeCalculator } from '@/services/volumeCalculator';
-import { BottleDrawingSpec, INCH, buildDrawingProfile } from '@/services/drawingProfile';
+import {
+  BottleDrawingSpec,
+  HDPE_DENSITY,
+  INCH,
+  PET_DENSITY,
+  buildDrawingProfile,
+} from '@/services/drawingProfile';
 
 export interface StockBottleSpec {
   capacity: number;          // mL (nominal)
@@ -18,6 +24,8 @@ export interface StockBottleSpec {
   drawing?: BottleDrawingSpec;
   closure?: ClosureDrawing;
   capStyle?: CapStyle;
+  /** Defaults to HDPE. */
+  material?: BottleMaterial;
 }
 
 /** 70.5 mL (60cc) bottle drawing with M33-SP400 finish detail (section A-A), mm. */
@@ -108,6 +116,22 @@ const DRAWING_400: BottleDrawingSpec = {
   neckCollarHeight: 0.187 * INCH,
   labelPanel: { fromBase: 0.25 * INCH, height: 3.66 * INCH },
   pushUp: { depth: 0.08 * INCH, diameter: 2.3 * INCH },
+};
+
+/** 625 mL (625cc straight sided, PET) drawing 625PS1XX45L400-E rev F, same family as the 250/400 mL. */
+const DRAWING_625: BottleDrawingSpec = {
+  ...DRAWING_250,
+  source: '625 mL PET bottle drawing 625PS1XX45L400-E rev F, L45SP400 finish detail',
+  bodyDiameter: 3.058 * INCH,
+  height: 6.132 * INCH,
+  baseRadius: 0.25 * INCH,
+  shoulderRadius: 0.562 * INCH,
+  // 5.426 to the shoulder top; the rest is collar, the family's .125 bead and H
+  neckCollarHeight: (6.132 - 5.426 - 0.125 - 0.403) * INCH,
+  // Label panel not dimensioned: the straight wall, heel to shoulder
+  labelPanel: { fromBase: 0.25 * INCH, height: (5.426 - 0.562 - 0.25) * INCH },
+  // Section B-B: .187 rise inside a .100 flat standing ring
+  pushUp: { depth: 0.187 * INCH, diameter: (3.058 - 2 * 0.25 - 2 * 0.1) * INCH },
 };
 
 /** 548 mL Berry "500 CC wide mouth round" drawing CP-2000256-PRT01 rev A (mold 75498A). */
@@ -273,7 +297,7 @@ export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400', drawing: DRAWING_335, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400', drawing: DRAWING_400, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400', drawing: DRAWING_548, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
-  { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400' },
+  { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400', drawing: DRAWING_625, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap', material: 'PET' },
   { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400' },
 ];
 
@@ -285,19 +309,31 @@ function neckSizeFromFinish(finish: string): number {
   return match ? Number(match[1]) : 38;
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Drawing profile with the wall solved from resin weight at the bottle's resin density. */
+export function stockProfile(spec: StockBottleSpec) {
+  if (!spec.drawing) return undefined;
+  const density = spec.material === 'PET' ? PET_DENSITY : HDPE_DENSITY;
+  return buildDrawingProfile(spec.drawing, spec.plasticWeight, density);
+}
+
 /**
- * Dimension fields for a spec-sheet row. `bodyHeight` is base to top of
+ * Dimension fields for a spec-sheet row; drawing bottles use the drawing's
+ * height and diameter. `bodyHeight` is base to top of
  * finish; the parametric shapes treat the neck as the top `neckHeight` of it.
  */
 export function stockDimensions(spec: StockBottleSpec) {
-  if (spec.drawing) {
+  const profile = stockProfile(spec);
+  if (spec.drawing && profile) {
     const d = spec.drawing;
-    const profile = buildDrawingProfile(d, spec.plasticWeight);
+    const height = round2(d.height);
+    const diameter = round2(d.bodyDiameter);
     return {
-      height: spec.height,
-      bodyHeight: spec.height,
-      diameter: spec.diameter,
-      baseDiameter: spec.diameter,
+      height,
+      bodyHeight: height,
+      diameter,
+      baseDiameter: diameter,
       neckDiameter: Math.round(d.threadDiameter * 100) / 100,
       neckHeight: Math.round((d.finishHeight + d.beadHeight) * 100) / 100,
       neckFinish: spec.neckFinish,
@@ -335,12 +371,12 @@ export function buildMyerstownBottles(template?: Partial<Bottle>): Bottle[] {
       capStyle: spec.capStyle ?? template?.capStyle ?? 'screw-cap',
       capColor: template?.capColor ?? '#FFFFFF',
       bodyColor: template?.bodyColor ?? '#FFFFFF',
-      material: 'HDPE',
+      material: spec.material ?? 'HDPE',
       opacity: template?.opacity ?? 1,
       labelZones: [],
       plasticWeight: spec.plasticWeight,
       weightTolerance: spec.weightTolerance,
-      profile: spec.drawing ? buildDrawingProfile(spec.drawing, spec.plasticWeight) : undefined,
+      profile: stockProfile(spec),
       closure: spec.closure,
       volume: 0,
       surfaceArea: 0,

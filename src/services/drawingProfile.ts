@@ -11,6 +11,9 @@ export const INCH = 25.4;
 /** Typical HDPE density, g/cm³ */
 export const HDPE_DENSITY = 0.952;
 
+/** Typical amorphous-to-oriented bottle-grade PET density, g/cm³ */
+export const PET_DENSITY = 1.38;
+
 /** Dimensions read off a bottle drawing (mm). */
 export interface BottleDrawingSpec {
   source: string;
