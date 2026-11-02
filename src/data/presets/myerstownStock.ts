@@ -118,9 +118,25 @@ const DRAWING_400: BottleDrawingSpec = {
   pushUp: { depth: 0.08 * INCH, diameter: 2.3 * INCH },
 };
 
-/** 625 mL "625cc custom packer" drawing H0625PKCU045A-A rev A, L45-400 finish detail. */
+/** 625 mL (625cc straight sided, PET) drawing 625PS1XX45L400-E rev F, same family as the 250/400 mL. */
 const DRAWING_625: BottleDrawingSpec = {
-  source: '625cc custom packer drawing H0625PKCU045A-A rev A, L45-400 finish detail',
+  ...DRAWING_250,
+  source: '625 mL PET bottle drawing 625PS1XX45L400-E rev F, L45SP400 finish detail',
+  bodyDiameter: 3.058 * INCH,
+  height: 6.132 * INCH,
+  baseRadius: 0.25 * INCH,
+  shoulderRadius: 0.562 * INCH,
+  // 5.426 to the shoulder top; the rest is collar, the family's .125 bead and H
+  neckCollarHeight: (6.132 - 5.426 - 0.125 - 0.403) * INCH,
+  // Label panel not dimensioned: the straight wall, heel to shoulder
+  labelPanel: { fromBase: 0.25 * INCH, height: (5.426 - 0.562 - 0.25) * INCH },
+  // Section B-B: .187 rise inside a .100 flat standing ring
+  pushUp: { depth: 0.187 * INCH, diameter: (3.058 - 2 * 0.25 - 2 * 0.1) * INCH },
+};
+
+/** 648 mL (650cc; titled "625cc custom packer") drawing H0625PKCU045A-A rev A, L45-400 finish detail. */
+const DRAWING_648: BottleDrawingSpec = {
+  source: '625cc custom packer drawing H0625PKCU045A-A rev A (648 mL overflow), L45-400 finish detail',
   bodyDiameter: 3.16 * INCH,
   height: 6.147 * INCH,
   // Compound heel (R.875 blending into R.188): modelled as the R.188 corner
@@ -309,9 +325,8 @@ export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400', drawing: DRAWING_335, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400', drawing: DRAWING_400, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400', drawing: DRAWING_548, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
-  // Weight per drawing H0625PKCU045A-A (spec sheet listed 51.5 ± 1 g)
-  { capacity: 625,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400', drawing: DRAWING_625, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
-  { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400' },
+  { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400', drawing: DRAWING_625, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top', material: 'PET' },
+  { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400', drawing: DRAWING_648 },
 ];
 
 // Approximate SPI 400-series finish height (H dimension) by neck size, mm
