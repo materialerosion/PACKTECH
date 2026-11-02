@@ -45,6 +45,47 @@ const DRAWING_70: BottleDrawingSpec = {
   labelPanel: { fromBase: 3.91, height: 49.25 },
 };
 
+/** 237 mL bottle drawing with M45SP400 finish detail (section A-A), mm. */
+const DRAWING_237: BottleDrawingSpec = {
+  source: '237 mL bottle drawing, M45SP400 finish detail',
+  bodyDiameter: 60.2,
+  height: 101.6,
+  baseRadius: 6.35,
+  shoulderRadius: 7.31,
+  // Shoulder meets the neck at Ø41.43; with R7.31 the body runs straight to the
+  // top of the label area (6.35 + 70.50)
+  neckDiameter: 41.43,
+  neckCollarHeight: 5.2,
+  beadDiameter: 44.0,
+  beadHeight: 2.0,
+  finishHeight: 10.24,
+  threadDiameter: 43.82,
+  rootDiameter: 41.43,
+  boreDiameter: 38.63,
+  threadStart: 1.17,
+  // Lip radius not dimensioned
+  lipRadius: 0.5,
+  threadPitch: INCH / 6, // 45-400: 6 TPI
+  threadTurns: 1.25,
+  labelPanel: { fromBase: 6.35, height: 70.5 },
+};
+
+/** 45-400 push-down-and-turn child-resistant closure drawing. */
+const CLOSURE_45_400_CR: ClosureDrawing = {
+  source: '45 mm-400 CR closure drawing (inner and outer injection PP)',
+  topDiameter: 1.976 * INCH,
+  bottomDiameter: 1.989 * INCH,
+  height: 0.704 * INCH,
+  bottomBandHeight: 0.064 * INCH,
+  // Serration count and depth not given: scaled from the 33 mm drawing
+  ribCount: 120,
+  ribDepth: 0.008 * INCH,
+  // Closure "H" (.381–.399) plus the depressed bottom band
+  skirtDepth: (0.39 + 0.064) * INCH,
+  topText: { arcTop: 'PUSH DOWN & TURN', arcBottom: 'TO OPEN', center: ['CLOSE', 'TIGHTLY'] },
+  material: 'PP',
+};
+
 /** 33-400 push-down-and-turn child-resistant closure drawing (REV-D). */
 const CLOSURE_33_400_CR: ClosureDrawing = {
   source: '33 mm-400 CR closure drawing REV-D (inner and outer injection PP)',
@@ -101,7 +142,7 @@ const CLOSURE_38_400_CR: ClosureDrawing = {
 export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 70.5,  plasticWeight: 10,   weightTolerance: 1,   diameter: 39.67, height: 74.55,  neckFinish: 'M33-SP400', drawing: DRAWING_70, closure: CLOSURE_33_400_CR, capStyle: 'child-resistant' },
   { capacity: 140.5, plasticWeight: 12.9,                       diameter: 50.62, height: 87.17,  neckFinish: 'L38-400 Special', drawing: DRAWING_140, closure: CLOSURE_38_400_CR, capStyle: 'child-resistant' },
-  { capacity: 237,   plasticWeight: 19.5, weightTolerance: 1,   diameter: 60.2,  height: 101.6,  neckFinish: 'M45SP400' },
+  { capacity: 237,   plasticWeight: 19.5, weightTolerance: 1,   diameter: 60.2,  height: 101.6,  neckFinish: 'M45SP400', drawing: DRAWING_237, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 250,   plasticWeight: 27.5, weightTolerance: 2,   diameter: 63.91, height: 119.08, neckFinish: 'L45SP400' },
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400' },
   { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400' },
