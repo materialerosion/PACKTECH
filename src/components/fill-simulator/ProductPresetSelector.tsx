@@ -15,7 +15,7 @@ const PRESET_GROUPS: [string, { preset: Product; idx: number }[]][] = (() => {
     const group = preset.group ?? 'Generic';
     groups.set(group, [...(groups.get(group) ?? []), { preset, idx }]);
   });
-  return [...groups.entries()];
+  return [...groups.entries()].sort(([a], [b]) => Number(a === 'Generic') - Number(b === 'Generic'));
 })();
 
 export default function ProductPresetSelector() {
