@@ -98,6 +98,17 @@ export default function ProductPresetSelector() {
           <div className="text-gray-500">
             Mass: {fillSim.fillProduct.mass}g{fillSim.fillProduct.massEstimated ? ' (est.)' : ''} · Vol: {fillSim.fillProduct.volume.toFixed(1)} mm³
           </div>
+          {fillSim.fillProduct.colorMix && (
+            <div className="flex flex-wrap items-center gap-2 text-gray-500">
+              <span>Random mix:</span>
+              {fillSim.fillProduct.colorMix.map((c) => (
+                <span key={c.name} className="flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full border border-gray-300" style={{ backgroundColor: c.color }} />
+                  {c.name}
+                </span>
+              ))}
+            </div>
+          )}
           {fillSim.fillProduct.specVolumeCc !== undefined && (
             <div className="text-gray-400">
               Spec CC (L×W×H): {fillSim.fillProduct.specVolumeCc}

@@ -32,6 +32,17 @@ interface ProductBodyProps {
 }
 
 const COLLIDER_FRICTION = 0.4;
+
+/** Random but stable per piece, so a piece keeps its color across re-renders. */
+function pieceColor(product: Product, id: string): string {
+  const mix = product.colorMix;
+  if (!mix?.length) return product.color;
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+  }
+  return mix[(hash >>> 0) % mix.length].color;
+}
 const COLLIDER_RESTITUTION = 0.05;
 
 function renderColliderPart(part: ColliderPart, key: string) {
@@ -102,7 +113,7 @@ function ProductBody({
   const colliderParams = useMemo(() => getProductColliderParams(product), [product]);
   const meshParams = useMemo(() => getProductMeshParams(product), [product]);
   const userData = useMemo(() => ({ productId: id }), [id]);
-  const color = getProductColor(product.color, isInside, isComplete);
+  const color = getProductColor(pieceColor(product, id), isInside, isComplete);
   const { length, width, height } = product.dimensions;
   
   return (

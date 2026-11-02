@@ -70,7 +70,7 @@ export function createProduct(
   height: number,
   mass: number,
   color: string,
-  extras: Pick<Product, 'group' | 'massEstimated' | 'specVolumeCc'> = {}
+  extras: Pick<Product, 'group' | 'massEstimated' | 'specVolumeCc' | 'colorMix'> = {}
 ): Product {
   return {
     id: uuidv4(),
@@ -99,40 +99,59 @@ function createEstimatedProduct(
   width: number,
   height: number,
   density: number,
-  color: string,
+  color: string | NonNullable<Product['colorMix']>,
   specVolumeCc: number
 ): Product {
   const volumeCc = calculateProductVolume(shape, length, width, height) / 1000;
   const mass = Math.round(volumeCc * density * 100) / 100;
-  return createProduct(name, shape, length, width, height, mass, color, {
+  const colorMix = typeof color === 'string' ? undefined : color;
+  return createProduct(name, shape, length, width, height, mass, colorMix ? colorMix[0].color : (color as string), {
     group,
     massEstimated: true,
     specVolumeCc,
+    colorMix,
   });
 }
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const average = (values: number[]) => round2(values.reduce((a, b) => a + b, 0) / values.length);
 
 /**
  * Bayer products from the "Gummies & Fruit Bite Sizes" and
  * "Chewables, Tablets & Pill Sizes" slides (average L × W × H, mm).
+ * Multi-color products are one size (the size most colors share) with a random color mix;
+ * spec CC is the average across colors.
  */
 const BAYER_PRODUCTS: Product[] = [
-  createEstimatedProduct('Mens VitaCraves', 'Mens VitaCraves – Purple', 'dome', 18, 17, 10, DENSITY_GUMMY, '#2B2233', 2.99),
-  createEstimatedProduct('Mens VitaCraves', 'Mens VitaCraves – Red', 'dome', 18, 16, 10, DENSITY_GUMMY, '#C8102E', 3.07),
-  createEstimatedProduct('Mens VitaCraves', 'Mens VitaCraves – Green', 'dome', 18, 17, 11, DENSITY_GUMMY, '#1E5631', 3.57),
+  // Slide sizes: Purple 18×17×10, Red 18×16×10, Green 18×17×11
+  createEstimatedProduct('Gummies', 'Mens VitaCraves', 'dome', 18, 17, 10, DENSITY_GUMMY, [
+    { name: 'Purple', color: '#2B2233' },
+    { name: 'Red', color: '#C8102E' },
+    { name: 'Green', color: '#1E5631' },
+  ], average([2.99, 3.07, 3.57])),
 
-  createEstimatedProduct('Womens VitaCraves', 'Womens VitaCraves – Purple', 'dome', 17, 17, 10, DENSITY_GUMMY, '#3A2430', 2.96),
-  createEstimatedProduct('Womens VitaCraves', 'Womens VitaCraves – Red', 'dome', 18, 17, 10, DENSITY_GUMMY, '#D0202E', 3.01),
-  createEstimatedProduct('Womens VitaCraves', 'Womens VitaCraves – Orange Slice', 'gummy', 20, 13, 10, DENSITY_GUMMY, '#F28C28', 2.57),
+  // Slide sizes: Purple 17×17×10, Red 18×17×10, Orange Slice 20×13×10 (slice modelled as a dome)
+  createEstimatedProduct('Gummies', 'Womens VitaCraves', 'dome', 18, 17, 10, DENSITY_GUMMY, [
+    { name: 'Purple', color: '#3A2430' },
+    { name: 'Red', color: '#D0202E' },
+    { name: 'Orange Slice', color: '#F28C28' },
+  ], average([2.96, 3.01, 2.57])),
 
-  createEstimatedProduct('Teens VitaCraves', 'Teens VitaCraves – Green', 'dome', 18, 17, 12, DENSITY_GUMMY, '#9BB547', 3.53),
-  createEstimatedProduct('Teens VitaCraves', 'Teens VitaCraves – Red', 'dome', 18, 17, 11, DENSITY_GUMMY, '#C0392B', 3.3),
-  createEstimatedProduct('Teens VitaCraves', 'Teens VitaCraves – Teal', 'dome', 18, 17, 11, DENSITY_GUMMY, '#1A8C7E', 3.47),
+  // Slide sizes: Green 18×17×12, Red 18×17×11, Teal 18×17×11
+  createEstimatedProduct('Gummies', 'Teens VitaCraves', 'dome', 18, 17, 11, DENSITY_GUMMY, [
+    { name: 'Green', color: '#9BB547' },
+    { name: 'Red', color: '#C0392B' },
+    { name: 'Teal', color: '#1A8C7E' },
+  ], average([3.53, 3.3, 3.47])),
 
-  createEstimatedProduct('Fruit Bites', 'Fruit Bites', 'gummy', 19, 19, 5, DENSITY_GUMMY, '#8B3A2B', 1.81),
+  createEstimatedProduct('Gummies', 'Fruit Bites', 'gummy', 19, 19, 5, DENSITY_GUMMY, '#8B3A2B', 1.81),
 
-  createEstimatedProduct('Flintstones Chewables', 'Flintstones – Red', 'gummy', 19, 11, 8, DENSITY_TABLET, '#D9685A', 1.5),
-  createEstimatedProduct('Flintstones Chewables', 'Flintstones – Purple', 'gummy', 19, 10, 8, DENSITY_TABLET, '#6B5A6E', 1.46),
-  createEstimatedProduct('Flintstones Chewables', 'Flintstones – Orange', 'gummy', 19, 10, 8, DENSITY_TABLET, '#D9832B', 1.5),
+  // Slide sizes: Red 19×11×8, Purple 19×10×8, Orange 19×10×8
+  createEstimatedProduct('Chewables', 'Flintstones Chewables', 'gummy', 19, 10, 8, DENSITY_TABLET, [
+    { name: 'Red', color: '#D9685A' },
+    { name: 'Purple', color: '#6B5A6E' },
+    { name: 'Orange', color: '#D9832B' },
+  ], average([1.5, 1.46, 1.5])),
 
   createEstimatedProduct('Tablets & Softgels', 'Mens Tablet', 'oblong-tablet', 19, 9, 7, DENSITY_TABLET, '#EFEBDD', 1.22),
   createEstimatedProduct('Tablets & Softgels', 'Womens Tablet', 'oblong-tablet', 22, 9, 7, DENSITY_TABLET, '#E8C77A', 1.44),
