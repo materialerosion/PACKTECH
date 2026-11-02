@@ -11,7 +11,16 @@ import { BottleSeries, FillRange } from '@/types/bottleSeries';
 import { Bottle } from '@/types/bottle';
 import { FillRangeService } from '@/services/fillRangeService';
 import { GENERATION_ALGORITHM_NAMES } from '@/types/bottleSeries';
-import { List, LayoutGrid, Trash2, BarChart3 } from 'lucide-react';
+import {
+  MYT_AREAS,
+  MYT_LINES_SOURCE,
+  MytArea,
+  formatMytLines,
+  mytLinesForCapacity,
+} from '@/data/presets/myerstownLines';
+import { List, LayoutGrid, Trash2, BarChart3, Factory } from 'lucide-react';
+
+const MYERSTOWN_PRESET_ID = 'myerstown-stock-hdpe';
 
 type DisplayMode = 'list' | 'grid';
 
@@ -280,7 +289,14 @@ function BottleDetailsPanel({ bottle, fillRange, index }: BottleDetailsPanelProp
           <span className="text-gray-500 block">Neck Finish</span>
           <span className="font-medium">{bottle.dimensions.neckFinish}</span>
         </div>
-        <div />
+        {bottle.presetId === MYERSTOWN_PRESET_ID ? (
+          <div>
+            <span className="text-gray-500 block">MYT Lines</span>
+            <span className="font-medium">{formatMytLines(mytLinesForCapacity(bottleCapacity(bottle)))}</span>
+          </div>
+        ) : (
+          <div />
+        )}
 
         <div>
           <span className="text-gray-500 block">Min Fill ({fillRange.minPercent}%)</span>
@@ -468,6 +484,95 @@ function PortfolioSummaryPanel({ bottles }: { bottles: Bottle[] }) {
           </table>
         </div>
       </div>
+
+      {bottles.some((b) => b.presetId === MYERSTOWN_PRESET_ID) && <MyerstownLinesSection bottles={bottles} />}
+    </div>
+  );
+}
+
+// ─── Myerstown Production Lines ───────────────────────────────────────
+
+interface LineRow {
+  area: MytArea;
+  line: number | null;
+  bottles: string[];
+}
+
+function MyerstownLinesSection({ bottles }: { bottles: Bottle[] }) {
+  const { rows, notInDoc } = useMemo(() => {
+    const sorted = [...bottles].sort((a, b) => bottleCapacity(a) - bottleCapacity(b));
+    const byKey = new Map<string, LineRow>();
+    const notInDoc: string[] = [];
+
+    sorted.forEach((bottle) => {
+      const entry = mytLinesForCapacity(bottleCapacity(bottle));
+      if (!entry) {
+        notInDoc.push(bottle.name);
+        return;
+      }
+      const label = entry.docCapacity ? `${bottle.name} (${entry.docCapacity}cc)` : bottle.name;
+      MYT_AREAS.forEach((area) => {
+        const assignment = entry[area];
+        if (!assignment) return;
+        const lines: (number | null)[] = assignment.lines.length ? assignment.lines : [null];
+        lines.forEach((line) => {
+          const key = `${area}-${line ?? 'x'}`;
+          if (!byKey.has(key)) byKey.set(key, { area, line, bottles: [] });
+          byKey.get(key)!.bottles.push(label);
+        });
+      });
+    });
+
+    const rows = [...byKey.values()].sort(
+      (a, b) =>
+        MYT_AREAS.indexOf(a.area) - MYT_AREAS.indexOf(b.area) ||
+        (a.line ?? Infinity) - (b.line ?? Infinity)
+    );
+    return { rows, notInDoc };
+  }, [bottles]);
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1">
+        <span className="text-[10px] uppercase tracking-wider text-gray-500 flex items-center gap-1">
+          <Factory className="w-3 h-3" />
+          Myerstown Production Lines
+        </span>
+        <span className="text-[10px] text-gray-400">{MYT_LINES_SOURCE}</span>
+      </div>
+      <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
+        <table className="w-full text-[11px]">
+          <thead className="bg-gray-50 text-gray-500">
+            <tr>
+              <th className="text-left font-medium px-2 py-1">Line</th>
+              <th className="text-left font-medium px-2 py-1">Area</th>
+              <th className="text-left font-medium px-2 py-1">Bottles</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={`${row.area}-${row.line ?? 'x'}`} className="border-t border-gray-100">
+                <td className="px-2 py-1 font-mono text-gray-900 whitespace-nowrap">
+                  {row.line === null ? <span className="text-gray-400 font-sans">Line not given</span> : `Line ${row.line}`}
+                </td>
+                <td className="px-2 py-1 text-gray-600">{row.area}</td>
+                <td className="px-2 py-1">
+                  <div className="flex flex-wrap gap-1">
+                    {row.bottles.map((name) => (
+                      <span key={name} className="px-1.5 py-0.5 rounded border bg-white border-gray-200 text-gray-700 font-mono">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {notInDoc.length > 0 && (
+        <p className="text-[10px] text-gray-400 mt-1">Not listed in the working doc: {notInDoc.join(', ')}</p>
+      )}
     </div>
   );
 }
