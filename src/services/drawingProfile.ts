@@ -31,6 +31,8 @@ export interface BottleDrawingSpec {
   threadPitch: number;
   threadTurns: number;
   labelPanel?: { fromBase: number; height: number };
+  /** Domed base push-up: rise at the centre and diameter of the standing ring. */
+  pushUp?: { depth: number; diameter: number };
 }
 
 const ARC_STEPS = 10;
@@ -66,6 +68,21 @@ function heights(spec: BottleDrawingSpec) {
   return { top, beadTop, beadBottom, neckBottom, R, centerR, neckR, endAngle, shoulderStart };
 }
 
+/** Base from the axis out to the start of the heel, raised `offset` off y = 0. */
+function baseCurve(spec: BottleDrawingSpec, offset: number): ProfilePoint[] {
+  const ringR = spec.bodyDiameter / 2 - spec.baseRadius;
+  const push = spec.pushUp;
+  if (!push) return [[0, offset], [ringR, offset]];
+  const domeR = Math.min(push.diameter / 2, ringR);
+  const points: ProfilePoint[] = [];
+  for (let i = 0; i <= ARC_STEPS; i++) {
+    const r = (domeR * i) / ARC_STEPS;
+    points.push([r, offset + push.depth * Math.cos((Math.PI / 2) * (r / domeR))]);
+  }
+  if (ringR > domeR) points.push([ringR, offset]);
+  return points;
+}
+
 function buildOuter(spec: BottleDrawingSpec): ProfilePoint[] {
   const h = heights(spec);
   const { R, centerR, neckR } = h;
@@ -74,7 +91,7 @@ function buildOuter(spec: BottleDrawingSpec): ProfilePoint[] {
   const rootR = spec.rootDiameter / 2;
   const lip = spec.lipRadius;
 
-  const points: ProfilePoint[] = [[0, 0], [R - rb, 0]];
+  const points: ProfilePoint[] = baseCurve(spec, 0);
   points.push(...arc(R - rb, rb, rb, -Math.PI / 2, 0).slice(1));
   points.push([R, h.shoulderStart]);
   points.push(...arc(centerR, h.shoulderStart, spec.shoulderRadius, 0, h.endAngle).slice(1));
@@ -102,7 +119,7 @@ function buildInner(spec: BottleDrawingSpec, t: number): ProfilePoint[] {
     : Math.PI / 2;
   const shoulderTop = h.shoulderStart + innerShoulder * Math.sin(endAngle);
 
-  const points: ProfilePoint[] = [[0, t], [R - rb, t]];
+  const points: ProfilePoint[] = baseCurve(spec, t);
   points.push(...arc(R - rb, rb, innerHeel, -Math.PI / 2, 0).slice(1));
   points.push([R - t, h.shoulderStart]);
   points.push(...arc(centerR, h.shoulderStart, innerShoulder, 0, endAngle).slice(1));
@@ -112,14 +129,16 @@ function buildInner(spec: BottleDrawingSpec, t: number): ProfilePoint[] {
   return points;
 }
 
-/** Volume of the solid swept by revolving `points` (mm³). */
+/**
+ * Volume of the solid swept by revolving `points` (mm³). Segments that run
+ * downward (a base push-up) subtract, so the result is the enclosed volume.
+ */
 export function revolvedVolume(points: ProfilePoint[]): number {
   let v = 0;
   for (let i = 1; i < points.length; i++) {
     const [r1, y1] = points[i - 1];
     const [r2, y2] = points[i];
-    const dy = y2 - y1;
-    if (dy > 0) v += (Math.PI * dy / 3) * (r1 * r1 + r1 * r2 + r2 * r2);
+    v += (Math.PI * (y2 - y1) / 3) * (r1 * r1 + r1 * r2 + r2 * r2);
   }
   return v;
 }

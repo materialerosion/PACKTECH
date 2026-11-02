@@ -93,6 +93,8 @@ const DRAWING_250: BottleDrawingSpec = {
   threadTurns: 1.25,
   // The label panel spans the whole straight wall, heel to shoulder
   labelPanel: { fromBase: 0.25 * INCH, height: 3.335 * INCH },
+  // Section B-B rise inside the Ø1.920 standing ring (bottom view)
+  pushUp: { depth: 0.125 * INCH, diameter: 1.92 * INCH },
 };
 
 /** 400 mL (400cc straight sided) bottle drawing 400PS2XX45L400 rev H, same family as the 250 mL. */
@@ -105,6 +107,47 @@ const DRAWING_400: BottleDrawingSpec = {
   shoulderRadius: 0.5 * INCH,
   neckCollarHeight: 0.187 * INCH,
   labelPanel: { fromBase: 0.25 * INCH, height: 3.66 * INCH },
+  pushUp: { depth: 0.08 * INCH, diameter: 2.3 * INCH },
+};
+
+/** 548 mL Berry "500 CC wide mouth round" drawing CP-2000256-PRT01 rev A (mold 75498A). */
+const DRAWING_548: BottleDrawingSpec = {
+  source: 'Berry 500cc wide mouth round, CP-2000256-PRT01 rev A, L45-SP400 finish',
+  bodyDiameter: 3.074 * INCH,
+  height: 5.57 * INCH,
+  baseRadius: 0.359 * INCH,
+  shoulderRadius: 0.65 * INCH,
+  // Neck diameter and collar not dimensioned. The collar starts the shoulder
+  // 0.19 above the deco area, as on the 335 mL from the same family
+  neckDiameter: 1.64 * INCH,
+  neckCollarHeight: 0.294 * INCH,
+  beadDiameter: 1.833 * INCH,
+  beadHeight: 0.11 * INCH, // "TSC"
+  finishHeight: 0.403 * INCH,
+  threadDiameter: 1.725 * INCH,
+  rootDiameter: 1.631 * INCH,
+  boreDiameter: 1.511 * INCH,
+  threadStart: 0.046 * INCH,
+  lipRadius: 0.5,
+  threadPitch: INCH / 6, // single lead, 6 TPI
+  threadTurns: 1, // 1 turn of full depth thread
+  labelPanel: { fromBase: 0.547 * INCH, height: 3.376 * INCH }, // deco area
+  // Standing ring diameter not dimensioned: inside the R.359 heel
+  pushUp: { depth: 0.138 * INCH, diameter: 2.2 * INCH },
+};
+
+/** Berry CK45LCTFT 45mm continuous-thread closure, drawing CP-86150-C rev A. */
+const CLOSURE_45_400_CT: ClosureDrawing = {
+  source: 'Berry CK45LCTFT 45mm CT closure, CP-86150-C rev A (PP)',
+  topDiameter: 1.86 * INCH,
+  bottomDiameter: 1.872 * INCH,
+  height: 0.454 * INCH,
+  bottomBandHeight: 0,
+  // Serration count and depth not given: fine full-height ribs
+  ribCount: 150,
+  ribDepth: 0.2,
+  skirtDepth: 0.39 * INCH, // "H" .381–.399
+  material: 'PP',
 };
 
 /** 335 mL Berry B45RD300H "300cc wide mouth round" drawing C-I-75497-01A-00 rev K (mold 5497). */
@@ -229,7 +272,7 @@ export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 250,   plasticWeight: 27.5, weightTolerance: 2,   diameter: 63.91, height: 119.08, neckFinish: 'L45SP400', drawing: DRAWING_250, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400', drawing: DRAWING_335, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400', drawing: DRAWING_400, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
-  { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400' },
+  { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400', drawing: DRAWING_548, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
   { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400' },
   { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400' },
 ];
