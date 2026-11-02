@@ -326,7 +326,7 @@ export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400', drawing: DRAWING_400, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400', drawing: DRAWING_548, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
   { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400', drawing: DRAWING_625, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top', material: 'PET' },
-  { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400', drawing: DRAWING_648 },
+  { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400', drawing: DRAWING_648, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
 ];
 
 // Approximate SPI 400-series finish height (H dimension) by neck size, mm
