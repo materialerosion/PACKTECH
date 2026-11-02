@@ -118,20 +118,32 @@ const DRAWING_400: BottleDrawingSpec = {
   pushUp: { depth: 0.08 * INCH, diameter: 2.3 * INCH },
 };
 
-/** 625 mL (625cc straight sided, PET) drawing 625PS1XX45L400-E rev F, same family as the 250/400 mL. */
+/** 625 mL "625cc custom packer" drawing H0625PKCU045A-A rev A, L45-400 finish detail. */
 const DRAWING_625: BottleDrawingSpec = {
-  ...DRAWING_250,
-  source: '625 mL PET bottle drawing 625PS1XX45L400-E rev F, L45SP400 finish detail',
-  bodyDiameter: 3.058 * INCH,
-  height: 6.132 * INCH,
-  baseRadius: 0.25 * INCH,
-  shoulderRadius: 0.562 * INCH,
-  // 5.426 to the shoulder top; the rest is collar, the family's .125 bead and H
-  neckCollarHeight: (6.132 - 5.426 - 0.125 - 0.403) * INCH,
-  // Label panel not dimensioned: the straight wall, heel to shoulder
-  labelPanel: { fromBase: 0.25 * INCH, height: (5.426 - 0.562 - 0.25) * INCH },
-  // Section B-B: .187 rise inside a .100 flat standing ring
-  pushUp: { depth: 0.187 * INCH, diameter: (3.058 - 2 * 0.25 - 2 * 0.1) * INCH },
+  source: '625cc custom packer drawing H0625PKCU045A-A rev A, L45-400 finish detail',
+  bodyDiameter: 3.16 * INCH,
+  height: 6.147 * INCH,
+  // Compound heel (R.875 blending into R.188): modelled as the R.188 corner
+  baseRadius: 0.188 * INCH,
+  shoulderRadius: 0.812 * INCH,
+  neckDiameter: 1.81 * INCH,
+  // 5.375 to the shoulder top; the rest is collar, the .125 bead and H
+  neckCollarHeight: (6.147 - 5.375 - 0.125 - 0.403) * INCH,
+  // Bead diameter not dimensioned
+  beadDiameter: 1.834 * INCH,
+  beadHeight: 0.125 * INCH,
+  finishHeight: 0.403 * INCH,
+  threadDiameter: 1.725 * INCH,
+  rootDiameter: 1.631 * INCH,
+  boreDiameter: 1.251 * INCH,
+  threadStart: 0.046 * INCH,
+  lipRadius: 0.5,
+  threadPitch: INCH / 6, // 6 TPI
+  threadTurns: 1, // 1 thread turn
+  // 4.15 label panel, ending where the R.812 shoulder starts
+  labelPanel: { fromBase: 0.425 * INCH, height: 4.15 * INCH },
+  // Section B-B .196 rise; standing ring diameter not dimensioned
+  pushUp: { depth: 0.196 * INCH, diameter: 2.4 * INCH },
 };
 
 /** 548 mL Berry "500 CC wide mouth round" drawing CP-2000256-PRT01 rev A (mold 75498A). */
@@ -201,7 +213,7 @@ const DRAWING_335: BottleDrawingSpec = {
 
 /** Weatherchem 45mm-400 NutraGen II flip-top closure, drawing S-210-00-08-AC. */
 const CLOSURE_45_400_NUTRAGEN: ClosureDrawing = {
-  source: 'Weatherchem 45mm-400 NutraGen II flip-top, S-210-00-08-AC (PP, 5.28 g)',
+  source: 'Weatherchem 45mm-400 NutraGen II flip-top, S-210-00-08-AC / 20065A (PP, 5.28 g)',
   topDiameter: 1.846 * INCH,
   bottomDiameter: 1.846 * INCH,
   height: 0.625 * INCH,
@@ -297,7 +309,8 @@ export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400', drawing: DRAWING_335, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400', drawing: DRAWING_400, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400', drawing: DRAWING_548, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
-  { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400', drawing: DRAWING_625, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap', material: 'PET' },
+  // Weight per drawing H0625PKCU045A-A (spec sheet listed 51.5 ± 1 g)
+  { capacity: 625,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400', drawing: DRAWING_625, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400' },
 ];
 
