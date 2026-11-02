@@ -95,6 +95,18 @@ const DRAWING_250: BottleDrawingSpec = {
   labelPanel: { fromBase: 0.25 * INCH, height: 3.335 * INCH },
 };
 
+/** 400 mL (400cc straight sided) bottle drawing 400PS2XX45L400 rev H, same family as the 250 mL. */
+const DRAWING_400: BottleDrawingSpec = {
+  ...DRAWING_250,
+  source: '400 mL bottle drawing 400PS2XX45L400 rev H, L45SP400 finish detail',
+  bodyDiameter: 2.875 * INCH,
+  height: 5.125 * INCH,
+  baseRadius: 0.25 * INCH,
+  shoulderRadius: 0.5 * INCH,
+  neckCollarHeight: 0.187 * INCH,
+  labelPanel: { fromBase: 0.25 * INCH, height: 3.66 * INCH },
+};
+
 /** 335 mL Berry B45RD300H "300cc wide mouth round" drawing C-I-75497-01A-00 rev K (mold 5497). */
 const DRAWING_335: BottleDrawingSpec = {
   source: 'Berry B45RD300H 300cc wide mouth round, C-I-75497-01A-00 rev K, L45-400 finish',
@@ -216,7 +228,7 @@ export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 237,   plasticWeight: 19.5, weightTolerance: 1,   diameter: 60.2,  height: 101.6,  neckFinish: 'M45SP400', drawing: DRAWING_237, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 250,   plasticWeight: 27.5, weightTolerance: 2,   diameter: 63.91, height: 119.08, neckFinish: 'L45SP400', drawing: DRAWING_250, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400', drawing: DRAWING_335, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
-  { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400' },
+  { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400', drawing: DRAWING_400, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400' },
   { capacity: 625,   plasticWeight: 51.5, weightTolerance: 1,   diameter: 80.26, height: 154.86, neckFinish: 'L45SP400' },
   { capacity: 648,   plasticWeight: 42,   weightTolerance: 2,   diameter: 80.26, height: 156.13, neckFinish: 'L45SP400' },
