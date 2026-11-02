@@ -134,6 +134,16 @@ export interface ClosureDrawing {
   /** Lines embossed on the top panel, outer ring first. */
   topText?: { arcTop: string; arcBottom: string; center: string[] };
   material: string;
+  /** Defaults to a knurled child-resistant shell. */
+  style?: 'child-resistant' | 'flip-top';
+  flipTop?: {
+    /** Height of the hinged lid, measured down from the top. */
+    lidHeight: number;
+    /** Chord width of the thumb notch at the front of the lid. */
+    notchWidth: number;
+    /** Radius of the recessed custom-logo area on the lid. */
+    logoRadius: number;
+  };
 }
 
 // Default bottle dimensions for different shapes

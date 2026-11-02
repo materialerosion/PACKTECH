@@ -67,10 +67,11 @@ export function createClosureGeometries(closure: ClosureDrawing): ClosureGeometr
   // Knurled skirt: alternate vertices around the circumference pulled inward
   const rKnurlBottom = rBottom - (rBottom - rTop) * (band / closure.height);
   const rKnurlTop = rTop;
-  const radial = closure.ribCount * 2;
+  const knurled = closure.ribCount > 0 && closure.ribDepth > 0;
+  const radial = knurled ? closure.ribCount * 2 : LATHE_SEGMENTS;
   const skirt = new THREE.CylinderGeometry(rKnurlTop, rKnurlBottom, knurlHeight, radial, 1, true);
   const pos = skirt.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
+  for (let i = 0; knurled && i < pos.count; i++) {
     const column = i % (radial + 1);
     if (column % 2 === 1) {
       const x = pos.getX(i);
@@ -114,6 +115,39 @@ export function createClosureGeometries(closure: ClosureDrawing): ClosureGeometr
   return { skirt, band: bandGeo, top, topPanel, topPanelRadius };
 }
 
+export interface FlipTopGeometries {
+  partingLine: THREE.BufferGeometry;
+  notch: THREE.BufferGeometry;
+  hinge: THREE.BufferGeometry;
+}
+
+/** Lid parting line, front thumb notch (+z) and rear hinge (−z) of a flip-top. */
+export function createFlipTopGeometries(closure: ClosureDrawing): FlipTopGeometries | null {
+  const flip = closure.flipTop;
+  if (!flip) return null;
+  const r = closure.topDiameter / 2;
+  const lineY = closure.height - flip.lidHeight;
+
+  const ring: THREE.Vector3[] = [];
+  for (let i = 0; i < LATHE_SEGMENTS; i++) {
+    const a = (i / LATHE_SEGMENTS) * Math.PI * 2;
+    ring.push(new THREE.Vector3(Math.cos(a) * (r + 0.05), lineY, Math.sin(a) * (r + 0.05)));
+  }
+  const partingLine = new THREE.BufferGeometry().setFromPoints(ring);
+
+  const notchAngle = 2 * Math.asin(Math.min(1, flip.notchWidth / 2 / r));
+  const notchHeight = Math.min(flip.lidHeight * 0.6, 3);
+  const notch = new THREE.CylinderGeometry(
+    r + 0.06, r + 0.06, notchHeight, 24, 1, true, -notchAngle / 2, notchAngle
+  );
+  notch.translate(0, lineY + notchHeight / 2, 0);
+
+  const hinge = new THREE.BoxGeometry(r * 0.45, flip.lidHeight * 0.8, 1.2);
+  hinge.translate(0, lineY, -(r + 0.4));
+
+  return { partingLine, notch, hinge };
+}
+
 function arcText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -153,7 +187,7 @@ function arrow(ctx: CanvasRenderingContext2D, radius: number, from: number, to: 
 
 /** Embossed top-panel artwork as a transparent texture. */
 export function createClosureTopTexture(closure: ClosureDrawing): THREE.CanvasTexture | null {
-  if (!closure.topText || typeof document === 'undefined') return null;
+  if ((!closure.topText && !closure.flipTop) || typeof document === 'undefined') return null;
   const size = 1024;
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -163,6 +197,13 @@ export function createClosureTopTexture(closure: ClosureDrawing): THREE.CanvasTe
 
   const R = size / 2;
   ctx.translate(R, R);
+
+  if (closure.flipTop) {
+    drawFlipTopLid(ctx, R, closure);
+    return toTexture(canvas);
+  }
+  if (!closure.topText) return null;
+
   ctx.fillStyle = 'rgba(40, 40, 40, 0.30)';
   ctx.strokeStyle = 'rgba(40, 40, 40, 0.30)';
   ctx.textAlign = 'center';
@@ -187,6 +228,45 @@ export function createClosureTopTexture(closure: ClosureDrawing): THREE.CanvasTe
   arrow(ctx, R * 0.6, Math.PI * 1.08, Math.PI * 0.86);
   arrow(ctx, R * 0.6, -Math.PI * 0.08, Math.PI * 0.14);
 
+  return toTexture(canvas);
+}
+
+/**
+ * Flip-top lid artwork: the recessed custom-logo area, flattened toward the
+ * thumb notch. Canvas bottom maps to the front (+z) of the closure.
+ */
+function drawFlipTopLid(ctx: CanvasRenderingContext2D, R: number, closure: ClosureDrawing) {
+  const flip = closure.flipTop!;
+  const panelR = closure.topDiameter / 2 - 1.3;
+  const logoR = Math.min((flip.logoRadius / panelR) * R, R * 0.95);
+  const frontChord = logoR * 0.62;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(0, 0, logoR, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(30, 30, 30, 0.10)';
+  ctx.fillRect(-logoR, -logoR, logoR * 2, logoR + frontChord);
+  ctx.strokeStyle = 'rgba(30, 30, 30, 0.10)';
+  ctx.lineWidth = 3;
+  for (let x = -logoR * 2; x < logoR * 2; x += R * 0.06) {
+    ctx.beginPath();
+    ctx.moveTo(x, -logoR);
+    ctx.lineTo(x + logoR * 2, logoR);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = 'rgba(30, 30, 30, 0.28)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  const a = Math.acos(frontChord / logoR);
+  ctx.arc(0, 0, logoR, Math.PI / 2 + a, Math.PI * 2 + Math.PI / 2 - a);
+  ctx.closePath();
+  ctx.stroke();
+}
+
+function toTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;

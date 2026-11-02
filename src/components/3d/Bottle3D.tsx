@@ -13,6 +13,7 @@ import { profileTop } from '@/services/drawingProfile';
 import {
   createClosureGeometries,
   createClosureTopTexture,
+  createFlipTopGeometries,
   createProfileBodyGeometry,
   createThreadGeometry,
 } from './drawingGeometry';
@@ -310,8 +311,10 @@ export function ClosureModel({
   opacity?: number;
 }) {
   const parts = useMemo(() => createClosureGeometries(closure), [closure]);
+  const flipTop = useMemo(() => createFlipTopGeometries(closure), [closure]);
   const topTexture = useMemo(() => createClosureTopTexture(closure), [closure]);
   const faded = opacity < 1;
+  const glossy = closure.style === 'flip-top';
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -319,8 +322,20 @@ export function ClosureModel({
         transparent: faded,
         opacity,
         depthWrite: !faded,
-        roughness: 0.6,
+        roughness: glossy ? 0.22 : 0.6,
         metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    [color, opacity, faded, glossy]
+  );
+  const shadeMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color).multiplyScalar(0.78),
+        transparent: faded,
+        opacity,
+        depthWrite: !faded,
+        roughness: 0.5,
         side: THREE.DoubleSide,
       }),
     [color, opacity, faded]
@@ -331,6 +346,17 @@ export function ClosureModel({
       <mesh geometry={parts.skirt} material={material} castShadow={!faded} receiveShadow />
       <mesh geometry={parts.band} material={material} castShadow={!faded} />
       <mesh geometry={parts.top} material={material} castShadow={!faded} receiveShadow />
+      {flipTop && (
+        <>
+          <mesh geometry={flipTop.notch} material={shadeMaterial} />
+          <mesh geometry={flipTop.hinge} material={material} castShadow={!faded} />
+          {!faded && (
+            <lineLoop geometry={flipTop.partingLine}>
+              <lineBasicMaterial color="#64748b" transparent opacity={0.6} />
+            </lineLoop>
+          )}
+        </>
+      )}
       {topTexture && !faded && (
         <mesh geometry={parts.topPanel}>
           <meshStandardMaterial
