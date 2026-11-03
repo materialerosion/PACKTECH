@@ -34,7 +34,7 @@ export default function PortfolioManager() {
   const drawingBottles = useMemo(
     () => [
       ...buildPainCardioBottles().map((bottle) => ({ bottle, group: 'Pain & Cardio drawing' })),
-      ...buildWestMercuryBottles().map((bottle) => ({ bottle, group: 'West 2-piece drawing' })),
+      ...buildWestMercuryBottles().map((bottle) => ({ bottle, group: 'Iconic 2-piece drawing' })),
     ],
     []
   );

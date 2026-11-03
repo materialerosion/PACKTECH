@@ -1,6 +1,7 @@
 /**
- * West 24mm Mercury 2-piece pack: oval HDPE bottle with a polystyrene collar
- * snapped over its conical shoulder, from supplier drawings.
+ * "Iconic" 2-piece pack (West 24mm Mercury, assembly 4204-24-05 rev K, 11.40 ± 1.5 g
+ * assembled): oval HDPE bottle with a polystyrene collar snapped over its
+ * conical shoulder, from supplier drawings.
  */
 
 import { Bottle, CollarDrawing } from '@/types';
@@ -47,10 +48,10 @@ const COLLAR_MERCURY_24: CollarDrawing = {
   baseDepth: 1.38 * INCH, // minor ellipse
   topDiameter: 1.264 * INCH, // tab lug width through ℄
   holeDiameter: 0.952 * INCH, // (Ø.952) ref
-  height: 0.982 * INCH, // tab step height
-  tabHeight: 0.021 * INCH, // (1.003) overall less the step height
+  height: 0.882 * INCH, // tab step height
+  tabHeight: 0.021 * INCH, // (.903) overall less the step height; (.902) on assembly 4204-24-05
   wallThickness: 0.052 * INCH,
-  // Base flush with the top of the bottle body, snapped into the undercut
+  // Base on the top of the bottle body (.015 max gap), snapped into the undercut
   seatY: BODY_TOP,
 };
 
@@ -64,7 +65,7 @@ export const WEST_MERCURY_BOTTLES: StockBottleSpec[] = [
     neckFinish: '24mm Mercury (double lead)',
     drawing: DRAWING_MERCURY_38,
     collar: COLLAR_MERCURY_24,
-    name: '38 mL Mercury Oval + Collar',
+    name: '38 mL Iconic',
   },
 ];
 
