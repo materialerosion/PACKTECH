@@ -36,6 +36,19 @@ const DRAWING_86_OVAL: BottleDrawingSpec = {
   pushUp: { depth: 0.094 * INCH, diameter: 1.375 * INCH },
 };
 
+/** Berry ZB33OBA118H "ALEVE 118cc oval", CP-140784-PRT01 rev B (mold P182-1): the 86.5cc footprint, taller. */
+const DRAWING_118_OVAL: BottleDrawingSpec = {
+  ...DRAWING_86_OVAL,
+  source: 'Berry ZB33OBA118H Aleve 118cc oval, CP-140784-PRT01 rev B, M33-SP400 "Special H" finish',
+  height: 3.334 * INCH,
+  // Front view: shoulder tangent at 2.593, TSC at 2.791
+  shoulderRadius: (2.791 - 2.593) * INCH,
+  ovalShoulderStart: 2.228 * INCH, // side view shoulder tangent
+  neckCollarHeight: (3.334 - 2.791 - 0.531) * INCH,
+  // 2.280 front label, centred on the straight wall between the heel and shoulder
+  labelPanel: { fromBase: 0.219 * INCH, height: 2.28 * INCH },
+};
+
 /** Berry ZR3340ASXOA 33mm CR-III closure assembly, overmolded (Aleve), CP-210075-ASM01 rev D. */
 const CLOSURE_33_CR_ALEVE: ClosureDrawing = {
   source: 'Berry ZR3340ASXOA 33mm CR-III assembly overmolded (Aleve), CP-210075-ASM01 rev D (PP/TPE outer, PP inner, 8.30 g)',
@@ -65,6 +78,18 @@ export const PAIN_CARDIO_BOTTLES: StockBottleSpec[] = [
     closure: CLOSURE_33_CR_ALEVE,
     capStyle: 'child-resistant',
     name: '86.5 mL Oval',
+  },
+  {
+    capacity: 118,
+    plasticWeight: 12.8,
+    weightTolerance: 0.5,
+    diameter: 56.11,
+    height: 84.68,
+    neckFinish: 'M33-SP400 Special H',
+    drawing: DRAWING_118_OVAL,
+    closure: CLOSURE_33_CR_ALEVE,
+    capStyle: 'child-resistant',
+    name: '118 mL Oval',
   },
 ];
 
