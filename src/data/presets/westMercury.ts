@@ -71,6 +71,19 @@ const CLOSURE_24_ALEVE: ClosureDrawing = {
   material: 'PP',
 };
 
+const BODY_TOP_58 = 1.463 * INCH; // (1.463) ref on assembly 4204-24-06
+
+/**
+ * West 7002-13-24 58cc bottle, from assembly 4204-24-06 rev H: the 38cc
+ * footprint, shoulder and finish on a taller body.
+ */
+const DRAWING_MERCURY_58: BottleDrawingSpec = {
+  ...DRAWING_MERCURY_38,
+  source: 'West 7002-13-24 24mm Mercury 58cc bottle, per assembly 4204-24-06 rev H (HDPE)',
+  height: 2.802 * INCH, // (2.802) OAH
+  cone: { ...DRAWING_MERCURY_38.cone!, bodyTop: BODY_TOP_58 },
+};
+
 export const WEST_MERCURY_BOTTLES: StockBottleSpec[] = [
   {
     capacity: 38,
@@ -84,6 +97,19 @@ export const WEST_MERCURY_BOTTLES: StockBottleSpec[] = [
     closure: CLOSURE_24_ALEVE,
     capStyle: 'child-resistant',
     name: '38 mL Iconic',
+  },
+  {
+    capacity: 58,
+    // 14.50 ± 2.5 g assembled, less the 4.8 g collar; no bottle drawing yet
+    plasticWeight: 9.7,
+    diameter: 48.34,
+    height: 71.17,
+    neckFinish: '24mm Mercury (double lead)',
+    drawing: DRAWING_MERCURY_58,
+    collar: { ...COLLAR_MERCURY_24, seatY: BODY_TOP_58 },
+    closure: CLOSURE_24_ALEVE,
+    capStyle: 'child-resistant',
+    name: '58 mL Iconic',
   },
 ];
 
