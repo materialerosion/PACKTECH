@@ -118,11 +118,11 @@ export interface DrawingProfile {
   };
   labelPanel?: { bottomY: number; height: number };
   /**
-   * Oval body: the profile is the major (x) axis and depth (z) is scaled by
-   * `depthRatio` below the first `scale` sample, then by the sampled [y, k]
-   * ratios, and is round (1) above the last.
+   * Oval body: the profile is the major (x) axis and the section is an
+   * ellipse of depth/width `depthRatio` (never narrower than the round neck),
+   * cut to the side-view shoulder half-depth sampled as [y, halfDepth].
    */
-  oval?: { depthRatio: number; scale: [number, number][] };
+  oval?: { depthRatio: number; neckRadius: number; slab: [number, number][] };
 }
 
 /** Closure geometry traced from a 2D drawing (mm). */

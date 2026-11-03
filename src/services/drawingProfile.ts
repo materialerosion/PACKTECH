@@ -46,40 +46,97 @@ export interface BottleDrawingSpec {
 
 type OvalSpec = DrawingProfile['oval'];
 
-/** Depth (z) scale of the profile at height `y`: 1 for round bottles. */
-export function depthScaleAt(oval: OvalSpec, y: number): number {
-  if (!oval) return 1;
-  const s = oval.scale;
-  if (s.length === 0 || y <= s[0][0]) return oval.depthRatio;
-  if (y >= s[s.length - 1][0]) return 1;
+/**
+ * Oval cross-section of a profile point at half-width `r` (front view) and
+ * height `y`, `inset` in from the outside surface: an ellipse whose depth
+ * rounds up to the neck radius (so the neck stays round), cut by the
+ * side-view shoulder at ±(slab − inset).
+ */
+function section(oval: NonNullable<OvalSpec>, r: number, y: number, inset: number) {
+  const depth = Math.min(r, Math.max(oval.depthRatio * r, oval.neckRadius - inset));
+  return { a: r, b: depth, c: slabAt(oval, y) - inset };
+}
+
+/** Side-view half-depth limit at `y` (Infinity outside the side shoulder). */
+function slabAt(oval: NonNullable<OvalSpec>, y: number): number {
+  const s = oval.slab ?? [];
+  if (s.length === 0 || y <= s[0][0] || y > s[s.length - 1][0]) return Infinity;
   let i = 1;
   while (s[i][0] < y) i++;
-  const [y1, k1] = s[i - 1];
-  const [y2, k2] = s[i];
-  return k1 + ((k2 - k1) * (y - y1)) / (y2 - y1);
+  const [y1, c1] = s[i - 1];
+  const [y2, c2] = s[i];
+  return c1 + ((c2 - c1) * (y - y1)) / (y2 - y1);
+}
+
+/** Point on the cross-section boundary at angle `theta` (x, z). */
+export function sectionPoint(
+  oval: OvalSpec,
+  r: number,
+  y: number,
+  theta: number,
+  inset = 0
+): [number, number] {
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  if (!oval || r <= 0) return [r * cos, r * sin];
+  const { a, b, c } = section(oval, r, y, inset);
+  let d = 1 / Math.hypot(cos / a, sin / b);
+  if (Math.abs(sin) * d > c) d = c / Math.abs(sin);
+  return [d * cos, d * sin];
+}
+
+/** Whether (x, z) lies inside the cross-section of half-width `r` at height `y`. */
+export function insideSection(oval: OvalSpec, x: number, z: number, r: number, y: number, inset = 0): boolean {
+  if (r <= 0) return false;
+  if (!oval) return Math.hypot(x, z) <= r;
+  const { a, b, c } = section(oval, r, y, inset);
+  return (x / a) ** 2 + (z / b) ** 2 <= 1 && Math.abs(z) <= c;
+}
+
+/** Cross-section area relative to the circle of half-width `r`. */
+export function sectionAreaFactor(oval: OvalSpec, y: number, r: number, inset = 0): number {
+  if (!oval || r <= 0) return 1;
+  const { a, b, c } = section(oval, r, y, inset);
+  const u = Math.min(1, Math.max(0, c / b));
+  const area = 2 * a * b * (Math.asin(u) + u * Math.sqrt(1 - u * u));
+  return area / (Math.PI * r * r);
+}
+
+/** Cross-section perimeter relative to the circle of half-width `r`. */
+function sectionPerimeterFactor(oval: OvalSpec, y: number, r: number): number {
+  if (!oval || r <= 0) return 1;
+  const steps = 64;
+  let p = 0;
+  let prev = sectionPoint(oval, r, y, 0);
+  for (let i = 1; i <= steps; i++) {
+    const next = sectionPoint(oval, r, y, (i / steps) * Math.PI * 2);
+    p += Math.hypot(next[0] - prev[0], next[1] - prev[1]);
+    prev = next;
+  }
+  return p / (Math.PI * 2 * r);
 }
 
 /**
- * Side-view shoulder: the minor-axis radius holds to `ovalShoulderStart`, then
- * falls tangentially (parabolic) to the neck radius at the neck bottom.
+ * Two-view oval: the front view is the profile (major axis) and the body is
+ * elliptical in section. The side view holds the half-depth to
+ * `ovalShoulderStart`, then slopes (parabolic, tangent at the bottom) into the
+ * neck at the neck bottom. Cutting the ellipse with that slope gives the
+ * saddle line across the front panel.
  */
 function buildOval(spec: BottleDrawingSpec, outer: ProfilePoint[], h: ReturnType<typeof heights>): OvalSpec {
   if (!spec.ovalDepth) return undefined;
   const depthRatio = spec.ovalDepth / spec.bodyDiameter;
-  const zBody = spec.ovalDepth / 2;
-  const neckR = spec.neckDiameter / 2;
+  const neckRadius = spec.neckDiameter / 2;
   const y0 = Math.min(spec.ovalShoulderStart ?? h.shoulderStart, h.shoulderStart);
   const y1 = h.neckBottom;
-  const scale: [number, number][] = [];
-  const steps = Math.max(8, Math.ceil((y1 - y0) / 0.5));
+  const zBody = depthRatio * radiusAt(outer, y0);
+  const slab: [number, number][] = [];
+  const steps = Math.max(12, Math.ceil((y1 - y0) / 0.5));
   for (let i = 0; i <= steps; i++) {
-    const y = y0 + ((y1 - y0) * i) / steps;
-    const t = (y - y0) / (y1 - y0);
-    const zR = neckR + (zBody - neckR) * (1 - t * t);
-    const r = radiusAt(outer, y);
-    scale.push([y, r > 0 ? Math.min(1, zR / r) : 1]);
+    const t = i / steps;
+    slab.push([y0 + (y1 - y0) * t, neckRadius + (zBody - neckRadius) * (1 - t * t)]);
   }
-  return { depthRatio, scale };
+  return { depthRatio, neckRadius, slab };
 }
 
 const ARC_STEPS = 10;
@@ -184,25 +241,25 @@ function buildInner(spec: BottleDrawingSpec, t: number): ProfilePoint[] {
  * Volume of the solid swept by revolving `points` (mm³). Segments that run
  * downward (a base push-up) subtract, so the result is the enclosed volume.
  */
-export function revolvedVolume(points: ProfilePoint[], oval?: OvalSpec): number {
+export function revolvedVolume(points: ProfilePoint[], oval?: OvalSpec, inset = 0): number {
   let v = 0;
   for (let i = 1; i < points.length; i++) {
     const [r1, y1] = points[i - 1];
     const [r2, y2] = points[i];
-    const k = depthScaleAt(oval, (y1 + y2) / 2);
-    v += k * (Math.PI * (y2 - y1) / 3) * (r1 * r1 + r1 * r2 + r2 * r2);
+    const f = sectionAreaFactor(oval, (y1 + y2) / 2, (r1 + r2) / 2, inset);
+    v += f * (Math.PI * (y2 - y1) / 3) * (r1 * r1 + r1 * r2 + r2 * r2);
   }
   return v;
 }
 
-/** Area of the surface swept by revolving `points` (mm²); ovals use the mean-radius perimeter. */
+/** Area of the surface swept by revolving `points` (mm²); ovals scale by the section perimeter. */
 export function revolvedArea(points: ProfilePoint[], oval?: OvalSpec): number {
   let a = 0;
   for (let i = 1; i < points.length; i++) {
     const [r1, y1] = points[i - 1];
     const [r2, y2] = points[i];
-    const k = depthScaleAt(oval, (y1 + y2) / 2);
-    a += ((1 + k) / 2) * Math.PI * (r1 + r2) * Math.hypot(r2 - r1, y2 - y1);
+    const p = sectionPerimeterFactor(oval, (y1 + y2) / 2, (r1 + r2) / 2);
+    a += p * Math.PI * (r1 + r2) * Math.hypot(r2 - r1, y2 - y1);
   }
   return a;
 }
@@ -222,7 +279,7 @@ export function radiusAt(points: ProfilePoint[], y: number): number {
 
 /** Brimful capacity of a drawing profile (mL). */
 export function profileCapacityMl(profile: DrawingProfile): number {
-  return revolvedVolume(profile.inner, profile.oval) / 1000;
+  return revolvedVolume(profile.inner, profile.oval, profile.wallThickness) / 1000;
 }
 
 /** Outside surface area of a drawing profile (cm²). */
@@ -254,7 +311,7 @@ export function buildDrawingProfile(
   let hi = 3;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
-    const resin = solid - revolvedVolume(buildInner(spec, mid), oval);
+    const resin = solid - revolvedVolume(buildInner(spec, mid), oval, mid);
     if (resin < resinMm3) lo = mid;
     else hi = mid;
   }

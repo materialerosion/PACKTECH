@@ -49,6 +49,31 @@ const DRAWING_118_OVAL: BottleDrawingSpec = {
   labelPanel: { fromBase: 0.219 * INCH, height: 2.28 * INCH },
 };
 
+/** Berry ZB45OBA232H "ALEVE 232.5cc oval", CP-140785-PRT01 rev C (molds P183-1, 4715-A), M45-SP400 Special H. */
+const DRAWING_232_OVAL: BottleDrawingSpec = {
+  ...DRAWING_86_OVAL,
+  source: 'Berry ZB45OBA232H Aleve 232.5cc oval, CP-140785-PRT01 rev C, M45-SP400 "Special H" finish',
+  bodyDiameter: 2.757 * INCH, // front (major axis)
+  heelDiameter: 2.717 * INCH, // front width at the base
+  ovalDepth: 2.126 * INCH, // side (minor axis)
+  height: 3.882 * INCH,
+  // Front view: shoulder tangent at 3.046, TSC at 3.320
+  shoulderRadius: (3.320 - 3.046) * INCH,
+  ovalShoulderStart: 2.388 * INCH, // side view shoulder tangent
+  // Neck diameter not dimensioned: just over T, as on the 33 mm sizes
+  neckDiameter: 1.78 * INCH,
+  neckCollarHeight: (3.882 - 3.320 - 0.549) * INCH,
+  beadDiameter: 1.78 * INCH,
+  finishHeight: 0.549 * INCH,
+  threadDiameter: 1.725 * INCH,
+  rootDiameter: 1.631 * INCH,
+  boreDiameter: 1.475 * INCH,
+  // 2.734 front label, centred on the straight wall between the heel and shoulder
+  labelPanel: { fromBase: 0.219 * INCH, height: 2.734 * INCH },
+  // .047 min push-up (.094 nominal, as on the 33 mm sizes) inside the Ø1.844 stacker
+  pushUp: { depth: 0.094 * INCH, diameter: 1.844 * INCH },
+};
+
 /** Berry ZR3340ASXOA 33mm CR-III closure assembly, overmolded (Aleve), CP-210075-ASM01 rev D. */
 const CLOSURE_33_CR_ALEVE: ClosureDrawing = {
   source: 'Berry ZR3340ASXOA 33mm CR-III assembly overmolded (Aleve), CP-210075-ASM01 rev D (PP/TPE outer, PP inner, 8.30 g)',
@@ -97,6 +122,16 @@ export const PAIN_CARDIO_BOTTLES: StockBottleSpec[] = [
     closure: CLOSURE_33_NCR_ALEVE,
     capStyle: 'screw-cap',
     name: '118 mL Oval',
+  },
+  {
+    capacity: 232.5,
+    plasticWeight: 19.2,
+    weightTolerance: 1,
+    diameter: 70.03,
+    height: 98.6,
+    neckFinish: 'M45-SP400 Special H',
+    drawing: DRAWING_232_OVAL,
+    name: '232.5 mL Oval',
   },
 ];
 

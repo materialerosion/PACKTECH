@@ -6,7 +6,7 @@
  */
 
 import { Bottle, BottleDimensions, BottleShape, DrawingProfile } from '@/types/bottle';
-import { depthScaleAt } from './drawingProfile';
+import { sectionPoint } from './drawingProfile';
 
 export interface ColliderGeometry {
   vertices: Float32Array;
@@ -358,11 +358,16 @@ export function buildProfileCollisionShell(profile: DrawingProfile): ColliderGeo
 
   const [firstR, firstY] = wall[0];
   let prevStart = vertices.length / 3;
-  const k = (y: number) => depthScaleAt(profile.oval, y);
-  generateRing(vertices, firstR, firstR * k(firstY - t), firstY - t, SEGMENTS);
+  const ring = (r: number, y: number) => {
+    for (let i = 0; i < SEGMENTS; i++) {
+      const [x, z] = sectionPoint(profile.oval, r, y, (i / SEGMENTS) * Math.PI * 2, t);
+      vertices.push(x, y, z);
+    }
+  };
+  ring(firstR, firstY - t);
   for (const [r, y] of wall) {
     const start = vertices.length / 3;
-    generateRing(vertices, r, r * k(y), y, SEGMENTS);
+    ring(r, y);
     connectRings(indices, start, prevStart, SEGMENTS);
     prevStart = start;
   }

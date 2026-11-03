@@ -15,7 +15,7 @@ import SimulationController from './SimulationController';
 import { Droplets } from 'lucide-react';
 import * as THREE from 'three';
 import { Bottle } from '@/types/bottle';
-import { depthScaleAt, radiusAt } from '@/services/drawingProfile';
+import { radiusAt, sectionPoint } from '@/services/drawingProfile';
 
 const PHYSICS_TIME_STEP = 1 / 60;
 const MAX_PHYSICS_FRAME_DELTA = 1 / 30;
@@ -52,15 +52,23 @@ function FillLine({ bottle, height }: { bottle: Bottle; height: number }) {
     ? radiusAt(bottle.profile.inner, height)
     : bottle.dimensions.diameter / 2 - (bottle.dimensions.wallThickness ?? 1);
   if (radius <= 0) return null;
-  const depth = depthScaleAt(bottle.profile?.oval, height);
+  const oval = bottle.profile?.oval;
+  const outline = (r: number) =>
+    Array.from({ length: 64 }, (_, i) => {
+      const [x, z] = sectionPoint(oval, r, height, (i / 64) * Math.PI * 2, bottle.profile?.wallThickness);
+      return new THREE.Vector2(x, -z);
+    });
+  const disc = new THREE.Shape(outline(radius));
+  const ring = new THREE.Shape(outline(radius));
+  ring.holes.push(new THREE.Path(outline(radius - 0.6).reverse()));
   return (
-    <group position={[0, height, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1, depth, 1]}>
+    <group position={[0, height, 0]} rotation={[-Math.PI / 2, 0, 0]}>
       <mesh renderOrder={2}>
-        <circleGeometry args={[radius, 48]} />
+        <shapeGeometry args={[disc]} />
         <meshBasicMaterial color="#2563eb" transparent opacity={0.18} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
       <mesh renderOrder={3}>
-        <ringGeometry args={[radius - 0.6, radius, 64]} />
+        <shapeGeometry args={[ring]} />
         <meshBasicMaterial color="#1d4ed8" transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
     </group>

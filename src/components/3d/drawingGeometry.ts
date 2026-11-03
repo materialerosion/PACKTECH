@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { ClosureDrawing, DrawingProfile } from '@/types';
-import { depthScaleAt } from '@/services/drawingProfile';
+import { sectionPoint } from '@/services/drawingProfile';
 
 const LATHE_SEGMENTS = 96;
 
@@ -21,7 +21,13 @@ export function createProfileBodyGeometry(profile: DrawingProfile): THREE.Buffer
   if (profile.oval) {
     const pos = geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) {
-      pos.setZ(i, pos.getZ(i) * depthScaleAt(profile.oval, pos.getY(i)));
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      // Lathe vertices run point by point within each segment: outer first, then inner
+      const inset = i % points.length < profile.outer.length ? 0 : profile.wallThickness;
+      const [sx, sz] = sectionPoint(profile.oval, Math.hypot(x, z), pos.getY(i), Math.atan2(z, x), inset);
+      pos.setX(i, sx);
+      pos.setZ(i, sz);
     }
     geometry.computeVertexNormals();
   }

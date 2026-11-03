@@ -15,7 +15,6 @@ import {
   getFloorThickness,
 } from '@/services/bottleColliderBuilder';
 import { createProfileBodyGeometry } from '@/components/3d/drawingGeometry';
-import { depthScaleAt } from '@/services/drawingProfile';
 import * as THREE from 'three';
 
 interface BottleColliderProps {
@@ -34,7 +33,7 @@ export default function BottleCollider({ bottle }: BottleColliderProps) {
   const floor = useMemo(() => {
     if (profile) {
       const r = profile.outer.reduce((m, [pr]) => Math.max(m, pr), 0);
-      return { rx: r, rz: r * depthScaleAt(profile.oval, 0), halfHeight: profile.inner[0][1] / 2 };
+      return { rx: r, rz: r * (profile.oval?.depthRatio ?? 1), halfHeight: profile.inner[0][1] / 2 };
     }
     const { rx, rz } = getBodyOuterRadii(dimensions, shape);
     return { rx, rz, halfHeight: getFloorThickness(dimensions) / 2 };
