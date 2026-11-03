@@ -9,7 +9,7 @@ import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { Bottle, ClosureDrawing, CollarDrawing, DrawingProfile } from '@/types';
 import { useStore } from '@/store';
-import { ovalShoulderEdges, profileTop, sectionPoint } from '@/services/drawingProfile';
+import { profileTop, sectionPoint } from '@/services/drawingProfile';
 import {
   createClosureGeometries,
   createCollarGeometries,
@@ -286,16 +286,6 @@ function DrawingBottle({
     });
   }, [profile]);
 
-  const shoulderEdges = useMemo(() => {
-    const lineMaterial = new THREE.LineBasicMaterial({ color: '#64748b', transparent: true, opacity: 0.8 });
-    return ovalShoulderEdges(profile).map((pts) => {
-      const geo = new THREE.BufferGeometry().setFromPoints(
-        pts.map(([x, y, z]) => new THREE.Vector3(x * 1.004, y, z * 1.004))
-      );
-      return new THREE.Line(geo, lineMaterial);
-    });
-  }, [profile]);
-
   return (
     <group>
       <mesh geometry={body} material={material} castShadow={!dimmed} receiveShadow />
@@ -305,7 +295,6 @@ function DrawingBottle({
           <lineBasicMaterial color="#94a3b8" transparent opacity={0.55} />
         </lineLoop>
       ))}
-      {!dimmed && shoulderEdges.map((line, i) => <primitive key={`s${i}`} object={line} />)}
       {collar && (
         <group position={[0, collar.seatY, 0]}>
           <CollarModel collar={collar} color={capColor} opacity={dimmed ? opacity : 1} />
