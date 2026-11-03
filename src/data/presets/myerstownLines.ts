@@ -29,6 +29,7 @@ export const MYERSTOWN_BOTTLE_LINES: MytBottleLines[] = [
   { capacity: 70.5, bottleCc: '87208273', OTC: { lines: [4, 9] }, Nutritionals: { lines: [19] } },
   { capacity: 140.5, bottleCc: '88278798', OTC: { lines: [9] }, Nutritionals: { lines: [7, 19] } },
   { capacity: 237, bottleCc: '87208338', OTC: { lines: [9] }, Nutritionals: { lines: [7, 19] } },
+  { capacity: 273, bottleCc: '87208338', OTC: { lines: [9] } },
   { capacity: 335, bottleCc: '87208354', Nutritionals: { lines: [6, 7, 19] } },
   { capacity: 400, docCapacity: 440, bottleCc: '91049958', Nutritionals: { lines: [], unspecified: true } },
   { capacity: 548, bottleCc: '87208370', OTC: { lines: [], unspecified: true }, Nutritionals: { lines: [6, 7] } },

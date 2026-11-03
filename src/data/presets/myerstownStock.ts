@@ -211,6 +211,24 @@ const DRAWING_335: BottleDrawingSpec = {
   labelPanel: { fromBase: 0.469 * INCH, height: 2.957 * INCH }, // deco area
 };
 
+/** 273 mL Berry B45RD250AH "250 CC wide mouth round" drawing CP-2000255-PRT01 rev A (mold 75495A). */
+const DRAWING_273: BottleDrawingSpec = {
+  ...DRAWING_335,
+  source: 'Berry B45RD250AH 250cc wide mouth round, CP-2000255-PRT01 rev A, L45-SP400 finish',
+  bodyDiameter: 2.472 * INCH,
+  height: 4.35 * INCH,
+  baseRadius: 0.188 * INCH,
+  shoulderRadius: 0.469 * INCH,
+  // Neck diameter not dimensioned. The collar puts the shoulder at the top of
+  // the (2.584) label area above .376
+  neckCollarHeight: 0.41 * INCH,
+  beadDiameter: 1.834 * INCH,
+  rootDiameter: 1.631 * INCH,
+  labelPanel: { fromBase: 0.376 * INCH, height: 2.584 * INCH },
+  // ".031 MIN PUSH-UP (.122)"; standing ring diameter not dimensioned
+  pushUp: { depth: 0.122 * INCH, diameter: 1.9 * INCH },
+};
+
 /** Weatherchem 45mm-400 NutraGen II flip-top closure, drawing S-210-00-08-AC. */
 const CLOSURE_45_400_NUTRAGEN: ClosureDrawing = {
   source: 'Weatherchem 45mm-400 NutraGen II flip-top, S-210-00-08-AC / 20065A (PP, 5.28 g)',
@@ -306,6 +324,8 @@ export const MYERSTOWN_STOCK_HDPE: StockBottleSpec[] = [
   { capacity: 140.5, plasticWeight: 12.9,                       diameter: 50.62, height: 87.17,  neckFinish: 'L38-400 Special', drawing: DRAWING_140, closure: CLOSURE_38_400_CR, capStyle: 'child-resistant' },
   { capacity: 237,   plasticWeight: 19.5, weightTolerance: 1,   diameter: 60.2,  height: 101.6,  neckFinish: 'M45SP400', drawing: DRAWING_237, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 250,   plasticWeight: 27.5, weightTolerance: 2,   diameter: 63.91, height: 119.08, neckFinish: 'L45SP400', drawing: DRAWING_250, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
+  // Closure not supplied yet: the 237's 45 mm CR, which fits the same 45-400 finish
+  { capacity: 273,   plasticWeight: 22.4, weightTolerance: 1,   diameter: 62.79, height: 110.49, neckFinish: 'L45-SP400', drawing: DRAWING_273, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 335,   plasticWeight: 28.3, weightTolerance: 1.5, diameter: 65.13, height: 126.03, neckFinish: 'L45-400', drawing: DRAWING_335, closure: CLOSURE_45_400_CR, capStyle: 'child-resistant' },
   { capacity: 400,   plasticWeight: 37,   weightTolerance: 2,   diameter: 73.03, height: 130.18, neckFinish: 'L45SP400', drawing: DRAWING_400, closure: CLOSURE_45_400_NUTRAGEN, capStyle: 'flip-top' },
   { capacity: 548,   plasticWeight: 32.4, weightTolerance: 1.5, diameter: 78.08, height: 141.48, neckFinish: 'L45-SP400', drawing: DRAWING_548, closure: CLOSURE_45_400_CT, capStyle: 'screw-cap' },
