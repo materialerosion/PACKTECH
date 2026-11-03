@@ -8,7 +8,7 @@
 import { BottleDimensions, BottleShape, DrawingProfile } from '@/types/bottle';
 import { Product } from '@/types/product';
 import { v4 as uuidv4 } from 'uuid';
-import { profileTop, radiusAt } from '@/services/drawingProfile';
+import { depthScaleAt, profileTop, radiusAt } from '@/services/drawingProfile';
 
 /**
  * Generate a random spawn position above the bottle neck.
@@ -372,7 +372,8 @@ export function isPointInsideProfile(
   // collision hull can dip just below the outer base while resting on the floor.
   if (y < -PROFILE_FLOOR_TOLERANCE || y > top * 1.02) return false;
   const floorY = profile.inner[0][1];
-  return Math.hypot(x, z) <= radiusAt(profile.outer, Math.min(Math.max(y, floorY), top));
+  const yc = Math.min(Math.max(y, floorY), top);
+  return Math.hypot(x, z / depthScaleAt(profile.oval, yc)) <= radiusAt(profile.outer, yc);
 }
 
 /**

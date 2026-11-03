@@ -9,7 +9,7 @@ import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { Bottle, ClosureDrawing, DrawingProfile } from '@/types';
 import { useStore } from '@/store';
-import { profileTop } from '@/services/drawingProfile';
+import { depthScaleAt, profileTop } from '@/services/drawingProfile';
 import {
   createClosureGeometries,
   createClosureTopTexture,
@@ -273,10 +273,11 @@ function DrawingBottle({
     const r = profile.outer.reduce((m, [pr]) => Math.max(m, pr), 0) + 0.15;
     const { bottomY, height } = profile.labelPanel;
     return [bottomY, bottomY + height].map((y) => {
+      const rz = r * depthScaleAt(profile.oval, y);
       const pts: THREE.Vector3[] = [];
       for (let i = 0; i < 96; i++) {
         const a = (i / 96) * Math.PI * 2;
-        pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+        pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * rz));
       }
       return new THREE.BufferGeometry().setFromPoints(pts);
     });

@@ -15,7 +15,7 @@ import SimulationController from './SimulationController';
 import { Droplets } from 'lucide-react';
 import * as THREE from 'three';
 import { Bottle } from '@/types/bottle';
-import { radiusAt } from '@/services/drawingProfile';
+import { depthScaleAt, radiusAt } from '@/services/drawingProfile';
 
 const PHYSICS_TIME_STEP = 1 / 60;
 const MAX_PHYSICS_FRAME_DELTA = 1 / 30;
@@ -52,8 +52,9 @@ function FillLine({ bottle, height }: { bottle: Bottle; height: number }) {
     ? radiusAt(bottle.profile.inner, height)
     : bottle.dimensions.diameter / 2 - (bottle.dimensions.wallThickness ?? 1);
   if (radius <= 0) return null;
+  const depth = depthScaleAt(bottle.profile?.oval, height);
   return (
-    <group position={[0, height, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+    <group position={[0, height, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1, depth, 1]}>
       <mesh renderOrder={2}>
         <circleGeometry args={[radius, 48]} />
         <meshBasicMaterial color="#2563eb" transparent opacity={0.18} depthWrite={false} side={THREE.DoubleSide} />

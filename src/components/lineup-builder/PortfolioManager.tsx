@@ -3,9 +3,10 @@
  * Create, rename and delete bottle / cap portfolios and grow them over time.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore, useActiveSeries } from '@/store';
 import { buildMyerstownBottles } from '@/data/presets/myerstownStock';
+import { buildPainCardioBottles } from '@/data/presets/painCardio';
 import { closureLabel } from '@/services/portfolioService';
 import { FolderPlus, Plus, Trash2, Package } from 'lucide-react';
 
@@ -29,8 +30,11 @@ export default function PortfolioManager() {
   const portfolios = Object.values(bottleSeries);
   const hasMyerstown = portfolios.some((s) => s.name === MYERSTOWN_PORTFOLIO_NAME);
 
-  // Bottles that can be added: the Bottle Generator library, plus bottles from any portfolio
+  const drawingBottles = useMemo(() => buildPainCardioBottles(), []);
+
+  // Bottles that can be added: supplier drawings, the Bottle Generator library, plus bottles from any portfolio
   const sources = [
+    ...drawingBottles.map((b) => ({ key: `drw:${b.name}`, label: `${b.name} (Pain & Cardio drawing)`, bottle: b })),
     ...Object.values(bottles).map((b) => ({ key: `lib:${b.id}`, label: `${b.name} (library)`, bottle: b })),
     ...portfolios.flatMap((s) =>
       s.bottles.map((b) => ({ key: `${s.id}:${b.id}`, label: `${b.name} (${s.name})`, bottle: b }))

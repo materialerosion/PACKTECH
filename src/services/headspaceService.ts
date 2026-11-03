@@ -4,9 +4,9 @@
  * Percentages are of overflow (brimful) capacity.
  */
 
-import { Bottle, ProfilePoint } from '@/types/bottle';
+import { Bottle, DrawingProfile, ProfilePoint } from '@/types/bottle';
 import { Product } from '@/types/product';
-import { radiusAt } from './drawingProfile';
+import { depthScaleAt, radiusAt } from './drawingProfile';
 import { getProductHalfExtents } from './fillSimulationService';
 
 export interface HeadspaceResult {
@@ -73,7 +73,7 @@ export function settledFillHeight(pieces: PieceState[], product: Product): numbe
 }
 
 /** Revolved volume of the part of `points` at or below height `y` (mm³). */
-function revolvedVolumeBelow(points: ProfilePoint[], y: number): number {
+function revolvedVolumeBelow(points: ProfilePoint[], y: number, oval?: DrawingProfile['oval']): number {
   let v = 0;
   for (let i = 1; i < points.length; i++) {
     let [r1, y1] = points[i - 1];
@@ -84,14 +84,14 @@ function revolvedVolumeBelow(points: ProfilePoint[], y: number): number {
       if (y2 > y) [r2, y2] = [rAtY, y];
       else [r1, y1] = [rAtY, y];
     }
-    v += (Math.PI * (y2 - y1) / 3) * (r1 * r1 + r1 * r2 + r2 * r2);
+    v += depthScaleAt(oval, (y1 + y2) / 2) * (Math.PI * (y2 - y1) / 3) * (r1 * r1 + r1 * r2 + r2 * r2);
   }
   return v;
 }
 
 /** Bottle volume below height `y` (mL). */
 export function volumeBelow(bottle: Bottle, y: number): number {
-  if (bottle.profile) return revolvedVolumeBelow(bottle.profile.inner, y) / 1000;
+  if (bottle.profile) return revolvedVolumeBelow(bottle.profile.inner, y, bottle.profile.oval) / 1000;
   const bodyTop = bottle.dimensions.height - bottle.dimensions.neckHeight;
   return bottle.volume * Math.min(1, Math.max(0, y / bodyTop));
 }

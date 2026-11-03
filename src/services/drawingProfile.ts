@@ -36,6 +36,50 @@ export interface BottleDrawingSpec {
   labelPanel?: { fromBase: number; height: number };
   /** Domed base push-up: rise at the centre and diameter of the standing ring. */
   pushUp?: { depth: number; diameter: number };
+  /** Tapered bodies: diameter at the heel, widening to `bodyDiameter` at the shoulder. */
+  heelDiameter?: number;
+  /** Oval bottles: outside minor-axis depth; `bodyDiameter` is the major axis. */
+  ovalDepth?: number;
+  /** Oval bottles: side-view shoulder tangent height (defaults to the front shoulder start). */
+  ovalShoulderStart?: number;
+}
+
+type OvalSpec = DrawingProfile['oval'];
+
+/** Depth (z) scale of the profile at height `y`: 1 for round bottles. */
+export function depthScaleAt(oval: OvalSpec, y: number): number {
+  if (!oval) return 1;
+  const s = oval.scale;
+  if (s.length === 0 || y <= s[0][0]) return oval.depthRatio;
+  if (y >= s[s.length - 1][0]) return 1;
+  let i = 1;
+  while (s[i][0] < y) i++;
+  const [y1, k1] = s[i - 1];
+  const [y2, k2] = s[i];
+  return k1 + ((k2 - k1) * (y - y1)) / (y2 - y1);
+}
+
+/**
+ * Side-view shoulder: the minor-axis radius holds to `ovalShoulderStart`, then
+ * falls tangentially (parabolic) to the neck radius at the neck bottom.
+ */
+function buildOval(spec: BottleDrawingSpec, outer: ProfilePoint[], h: ReturnType<typeof heights>): OvalSpec {
+  if (!spec.ovalDepth) return undefined;
+  const depthRatio = spec.ovalDepth / spec.bodyDiameter;
+  const zBody = spec.ovalDepth / 2;
+  const neckR = spec.neckDiameter / 2;
+  const y0 = Math.min(spec.ovalShoulderStart ?? h.shoulderStart, h.shoulderStart);
+  const y1 = h.neckBottom;
+  const scale: [number, number][] = [];
+  const steps = Math.max(8, Math.ceil((y1 - y0) / 0.5));
+  for (let i = 0; i <= steps; i++) {
+    const y = y0 + ((y1 - y0) * i) / steps;
+    const t = (y - y0) / (y1 - y0);
+    const zR = neckR + (zBody - neckR) * (1 - t * t);
+    const r = radiusAt(outer, y);
+    scale.push([y, r > 0 ? Math.min(1, zR / r) : 1]);
+  }
+  return { depthRatio, scale };
 }
 
 const ARC_STEPS = 10;
@@ -73,7 +117,7 @@ function heights(spec: BottleDrawingSpec) {
 
 /** Base from the axis out to the start of the heel, raised `offset` off y = 0. */
 function baseCurve(spec: BottleDrawingSpec, offset: number): ProfilePoint[] {
-  const ringR = spec.bodyDiameter / 2 - spec.baseRadius;
+  const ringR = (spec.heelDiameter ?? spec.bodyDiameter) / 2 - spec.baseRadius;
   const push = spec.pushUp;
   if (!push) return [[0, offset], [ringR, offset]];
   const domeR = Math.min(push.diameter / 2, ringR);
@@ -94,8 +138,10 @@ function buildOuter(spec: BottleDrawingSpec): ProfilePoint[] {
   const rootR = spec.rootDiameter / 2;
   const lip = spec.lipRadius;
 
+  const heelR = (spec.heelDiameter ?? spec.bodyDiameter) / 2;
+
   const points: ProfilePoint[] = baseCurve(spec, 0);
-  points.push(...arc(R - rb, rb, rb, -Math.PI / 2, 0).slice(1));
+  points.push(...arc(heelR - rb, rb, rb, -Math.PI / 2, 0).slice(1));
   points.push([R, h.shoulderStart]);
   points.push(...arc(centerR, h.shoulderStart, spec.shoulderRadius, 0, h.endAngle).slice(1));
   points.push([neckR, h.neckBottom]);
@@ -122,8 +168,10 @@ function buildInner(spec: BottleDrawingSpec, t: number): ProfilePoint[] {
     : Math.PI / 2;
   const shoulderTop = h.shoulderStart + innerShoulder * Math.sin(endAngle);
 
+  const heelR = (spec.heelDiameter ?? spec.bodyDiameter) / 2;
+
   const points: ProfilePoint[] = baseCurve(spec, t);
-  points.push(...arc(R - rb, rb, innerHeel, -Math.PI / 2, 0).slice(1));
+  points.push(...arc(heelR - rb, rb, innerHeel, -Math.PI / 2, 0).slice(1));
   points.push([R - t, h.shoulderStart]);
   points.push(...arc(centerR, h.shoulderStart, innerShoulder, 0, endAngle).slice(1));
   points.push([innerNeckR, Math.max(shoulderTop, h.beadBottom - t)]);
@@ -136,23 +184,25 @@ function buildInner(spec: BottleDrawingSpec, t: number): ProfilePoint[] {
  * Volume of the solid swept by revolving `points` (mm³). Segments that run
  * downward (a base push-up) subtract, so the result is the enclosed volume.
  */
-export function revolvedVolume(points: ProfilePoint[]): number {
+export function revolvedVolume(points: ProfilePoint[], oval?: OvalSpec): number {
   let v = 0;
   for (let i = 1; i < points.length; i++) {
     const [r1, y1] = points[i - 1];
     const [r2, y2] = points[i];
-    v += (Math.PI * (y2 - y1) / 3) * (r1 * r1 + r1 * r2 + r2 * r2);
+    const k = depthScaleAt(oval, (y1 + y2) / 2);
+    v += k * (Math.PI * (y2 - y1) / 3) * (r1 * r1 + r1 * r2 + r2 * r2);
   }
   return v;
 }
 
-/** Area of the surface swept by revolving `points` (mm²). */
-export function revolvedArea(points: ProfilePoint[]): number {
+/** Area of the surface swept by revolving `points` (mm²); ovals use the mean-radius perimeter. */
+export function revolvedArea(points: ProfilePoint[], oval?: OvalSpec): number {
   let a = 0;
   for (let i = 1; i < points.length; i++) {
     const [r1, y1] = points[i - 1];
     const [r2, y2] = points[i];
-    a += Math.PI * (r1 + r2) * Math.hypot(r2 - r1, y2 - y1);
+    const k = depthScaleAt(oval, (y1 + y2) / 2);
+    a += ((1 + k) / 2) * Math.PI * (r1 + r2) * Math.hypot(r2 - r1, y2 - y1);
   }
   return a;
 }
@@ -172,12 +222,12 @@ export function radiusAt(points: ProfilePoint[], y: number): number {
 
 /** Brimful capacity of a drawing profile (mL). */
 export function profileCapacityMl(profile: DrawingProfile): number {
-  return revolvedVolume(profile.inner) / 1000;
+  return revolvedVolume(profile.inner, profile.oval) / 1000;
 }
 
 /** Outside surface area of a drawing profile (cm²). */
 export function profileSurfaceAreaCm2(profile: DrawingProfile): number {
-  return revolvedArea(profile.outer) / 100;
+  return revolvedArea(profile.outer, profile.oval) / 100;
 }
 
 /** Height of the top of the finish (mm). */
@@ -195,14 +245,16 @@ export function buildDrawingProfile(
   density = HDPE_DENSITY
 ): DrawingProfile {
   const outer = buildOuter(spec);
+  const h = heights(spec);
+  const oval = buildOval(spec, outer, h);
   const resinMm3 = (plasticWeight / density) * 1000;
-  const solid = revolvedVolume(outer);
+  const solid = revolvedVolume(outer, oval);
 
   let lo = 0.2;
   let hi = 3;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
-    const resin = solid - revolvedVolume(buildInner(spec, mid));
+    const resin = solid - revolvedVolume(buildInner(spec, mid), oval);
     if (resin < resinMm3) lo = mid;
     else hi = mid;
   }
@@ -224,5 +276,6 @@ export function buildDrawingProfile(
     labelPanel: spec.labelPanel
       ? { bottomY: spec.labelPanel.fromBase, height: spec.labelPanel.height }
       : undefined,
+    oval,
   };
 }

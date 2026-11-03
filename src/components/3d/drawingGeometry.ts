@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { ClosureDrawing, DrawingProfile } from '@/types';
+import { depthScaleAt } from '@/services/drawingProfile';
 
 const LATHE_SEGMENTS = 96;
 
@@ -16,7 +17,15 @@ export function createProfileBodyGeometry(profile: DrawingProfile): THREE.Buffer
     ...profile.outer,
     ...[...profile.inner].reverse(),
   ].map(([r, y]) => new THREE.Vector2(Math.max(r, 0), y));
-  return new THREE.LatheGeometry(points, LATHE_SEGMENTS);
+  const geometry = new THREE.LatheGeometry(points, LATHE_SEGMENTS);
+  if (profile.oval) {
+    const pos = geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      pos.setZ(i, pos.getZ(i) * depthScaleAt(profile.oval, pos.getY(i)));
+    }
+    geometry.computeVertexNormals();
+  }
+  return geometry;
 }
 
 class HelixCurve extends THREE.Curve<THREE.Vector3> {

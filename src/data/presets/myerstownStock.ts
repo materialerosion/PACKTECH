@@ -26,6 +26,8 @@ export interface StockBottleSpec {
   capStyle?: CapStyle;
   /** Defaults to HDPE. */
   material?: BottleMaterial;
+  /** Defaults to "<capacity> mL". */
+  name?: string;
 }
 
 /** 70.5 mL (60cc) bottle drawing with M33-SP400 finish detail (section A-A), mm. */
@@ -396,16 +398,28 @@ export function stockDimensions(spec: StockBottleSpec) {
  * wall, shoulder) is taken from `template` when provided.
  */
 export function buildMyerstownBottles(template?: Partial<Bottle>): Bottle[] {
-  const shape = template?.shape ?? 'boston-round';
-  const baseDims = { ...DEFAULT_DIMENSIONS[shape], ...template?.dimensions };
+  return buildStockBottles(MYERSTOWN_STOCK_HDPE, 'myerstown-stock-hdpe', template);
+}
 
-  return MYERSTOWN_STOCK_HDPE.map((spec) => {
+export function buildStockBottles(
+  specs: StockBottleSpec[],
+  presetId: string,
+  template?: Partial<Bottle>
+): Bottle[] {
+  return specs.map((spec) => {
+    const ovalDepth = spec.drawing?.ovalDepth;
+    const shape = ovalDepth ? 'oval' : template?.shape ?? 'boston-round';
+    const baseDims = { ...DEFAULT_DIMENSIONS[shape], ...template?.dimensions };
     const now = new Date();
     const bottle: Bottle = {
       id: uuidv4(),
-      name: `${spec.capacity} mL`,
+      name: spec.name ?? `${spec.capacity} mL`,
       shape,
-      dimensions: { ...baseDims, ...stockDimensions(spec) },
+      dimensions: {
+        ...baseDims,
+        ...stockDimensions(spec),
+        ...(ovalDepth && spec.drawing ? { widthRatio: round2(ovalDepth / spec.drawing.bodyDiameter) } : {}),
+      },
       capStyle: spec.capStyle ?? template?.capStyle ?? 'screw-cap',
       capColor: template?.capColor ?? '#FFFFFF',
       bodyColor: template?.bodyColor ?? '#FFFFFF',
@@ -421,7 +435,7 @@ export function buildMyerstownBottles(template?: Partial<Bottle>): Bottle[] {
       createdAt: now,
       updatedAt: now,
       isCustom: false,
-      presetId: 'myerstown-stock-hdpe',
+      presetId,
     };
 
     bottle.volume = VolumeCalculator.calculate(bottle);

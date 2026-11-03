@@ -117,6 +117,12 @@ export interface DrawingProfile {
     pitch: number;
   };
   labelPanel?: { bottomY: number; height: number };
+  /**
+   * Oval body: the profile is the major (x) axis and depth (z) is scaled by
+   * `depthRatio` below the first `scale` sample, then by the sampled [y, k]
+   * ratios, and is round (1) above the last.
+   */
+  oval?: { depthRatio: number; scale: [number, number][] };
 }
 
 /** Closure geometry traced from a 2D drawing (mm). */
