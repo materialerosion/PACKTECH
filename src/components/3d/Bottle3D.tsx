@@ -323,6 +323,20 @@ function DrawingBottle({
 /** Collar from a drawing, with y = 0 at its base. */
 function CollarModel({ collar, color, opacity }: { collar: CollarDrawing; color: string; opacity: number }) {
   const parts = useMemo(() => createCollarGeometries(collar), [collar]);
+  // Seams at the base and top edge, so a white collar reads against a white bottle
+  const seams = useMemo(() => {
+    const a = collar.baseWidth / 2 + 0.15;
+    const b = collar.baseDepth / 2 + 0.15;
+    const r = collar.topDiameter / 2 + 0.1;
+    const base: THREE.Vector3[] = [];
+    const top: THREE.Vector3[] = [];
+    for (let i = 0; i < 96; i++) {
+      const t = (i / 96) * Math.PI * 2;
+      base.push(new THREE.Vector3(a * Math.cos(t), 0.05, b * Math.sin(t)));
+      top.push(new THREE.Vector3(r * Math.cos(t), collar.height, r * Math.sin(t)));
+    }
+    return [base, top].map((pts) => new THREE.BufferGeometry().setFromPoints(pts));
+  }, [collar]);
   const faded = opacity < 1;
   const material = useMemo(
     () =>
@@ -353,6 +367,11 @@ function CollarModel({ collar, color, opacity }: { collar: CollarDrawing; color:
     <group>
       <mesh geometry={parts.shell} material={material} castShadow={!faded} receiveShadow />
       <mesh geometry={parts.grips} material={gripMaterial} castShadow={!faded} />
+      {!faded && seams.map((geo, i) => (
+        <lineLoop key={i} geometry={geo}>
+          <lineBasicMaterial color="#64748b" transparent opacity={0.7} />
+        </lineLoop>
+      ))}
     </group>
   );
 }
@@ -370,6 +389,15 @@ export function ClosureModel({
   const parts = useMemo(() => createClosureGeometries(closure), [closure]);
   const flipTop = useMemo(() => createFlipTopGeometries(closure), [closure]);
   const topTexture = useMemo(() => createClosureTopTexture(closure), [closure]);
+  const bottomEdge = useMemo(() => {
+    const r = closure.bottomDiameter / 2 + 0.1;
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i < 96; i++) {
+      const t = (i / 96) * Math.PI * 2;
+      pts.push(new THREE.Vector3(r * Math.cos(t), 0.05, r * Math.sin(t)));
+    }
+    return new THREE.BufferGeometry().setFromPoints(pts);
+  }, [closure]);
   const faded = opacity < 1;
   const glossy = closure.style === 'flip-top';
   const material = useMemo(
@@ -403,6 +431,11 @@ export function ClosureModel({
       <mesh geometry={parts.skirt} material={material} castShadow={!faded} receiveShadow />
       <mesh geometry={parts.band} material={material} castShadow={!faded} />
       <mesh geometry={parts.top} material={material} castShadow={!faded} receiveShadow />
+      {!faded && (
+        <lineLoop geometry={bottomEdge}>
+          <lineBasicMaterial color="#64748b" transparent opacity={0.6} />
+        </lineLoop>
+      )}
       {flipTop && (
         <>
           <mesh geometry={flipTop.notch} material={shadeMaterial} />
