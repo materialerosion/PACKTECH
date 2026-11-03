@@ -16,7 +16,8 @@ const DRAWING_86_OVAL: BottleDrawingSpec = {
   baseRadius: 0.125 * INCH,
   // Label faces: shoulder tangent at 1.824, TSC at 2.043
   shoulderRadius: (2.043 - 1.824) * INCH,
-  ovalShoulderStart: 1.48 * INCH, // narrow ends: lower TAN, where the sloping shoulder starts  // Neck diameter not dimensioned; the closure allows at most Ø1.377 at the shoulder
+  ovalShoulderStart: 1.48 * INCH, // narrow ends: lower TAN, where the sloping shoulder starts
+  // Neck diameter not dimensioned; the closure allows at most Ø1.377 at the shoulder
   neckDiameter: 1.3 * INCH,
   neckCollarHeight: (2.586 - 2.043 - 0.531) * INCH,
   beadDiameter: 1.3 * INCH,
@@ -59,7 +60,7 @@ const DRAWING_232_OVAL: BottleDrawingSpec = {
   // Label faces: shoulder tangent at 3.046, TSC at 3.320
   shoulderRadius: (3.320 - 3.046) * INCH,
   ovalShoulderStart: 2.388 * INCH, // narrow ends: lower TAN
-  // Neck diameter not dimensioned: just over T, as on the 33 mm sizes
+  // Neck diameter not dimensioned: just over T, as on the 33 mm sizes; the closure allows at most Ø1.807
   neckDiameter: 1.78 * INCH,
   neckCollarHeight: (3.882 - 3.320 - 0.549) * INCH,
   beadDiameter: 1.78 * INCH,
@@ -97,6 +98,19 @@ const CLOSURE_33_NCR_ALEVE: ClosureDrawing = {
   topText: { arcTop: '', arcBottom: '', center: ['ALEVE'] },
 };
 
+/** Berry ZR4540ASXOE 45mm CR-III closure assembly, overmolded (Aleve), CP-210243-ASM01 rev B: the 33mm shell scaled up. */
+const CLOSURE_45_CR_ALEVE: ClosureDrawing = {
+  ...CLOSURE_33_CR_ALEVE,
+  source: 'Berry ZR4540ASXOE 45mm CR-III assembly overmolded (Aleve), CP-210243-ASM01 rev B (PP/TPE outer, PP inner, 12.04 g)',
+  // Ø2.035 @ TAN at the top, Ø2.048 @ TAN at the bottom (+/-0.75° draft)
+  topDiameter: 2.035 * INCH,
+  bottomDiameter: 2.048 * INCH,
+  height: 0.739 * INCH,
+  bottomBandHeight: 0.13 * INCH,
+  // Closure "H" .394 plus the bottom band
+  skirtDepth: (0.394 + 0.13) * INCH,
+};
+
 export const PAIN_CARDIO_BOTTLES: StockBottleSpec[] = [
   {
     capacity: 86.5,
@@ -130,6 +144,8 @@ export const PAIN_CARDIO_BOTTLES: StockBottleSpec[] = [
     height: 98.6,
     neckFinish: 'M45-SP400 Special H',
     drawing: DRAWING_232_OVAL,
+    closure: CLOSURE_45_CR_ALEVE,
+    capStyle: 'child-resistant',
     name: '232.5 mL Oval',
   },
 ];
