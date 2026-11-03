@@ -18,6 +18,7 @@ import {
   getProductSamplePoints,
   getProductMaxDimension,
 } from '@/services/fillSimulationService';
+import { computeHeadspace } from '@/services/headspaceService';
 
 // All durations are simulated seconds, read from the physics clock
 const DROP_INTERVAL = 0.25; // seconds between drops (and between redrops)
@@ -201,8 +202,11 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
         fillSim.fillBottle.volume,
         elapsed
       );
-      results.productPositions = [...productBodiesRef.current];
-      setFillSimResults(results);
+      setFillSimResults({
+        ...results,
+        productPositions: [...productBodiesRef.current],
+        headspace: computeHeadspace(fillSim.fillBottle, fillSim.fillProduct, productBodiesRef.current),
+      });
     }
     
     updateFillSimProgress({

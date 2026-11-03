@@ -8,6 +8,7 @@ import { useStore } from '@/store';
 import { AnimatePresence, motion } from 'framer-motion';
 import BottleGenerator from '../bottle-generator/BottleGenerator';
 import SeriesGenerator from '../lineup-builder/SeriesGenerator';
+import PortfolioManager from '../lineup-builder/PortfolioManager';
 import BatchEditor from '../lineup-builder/BatchEditor';
 import HeroBottleEditor from '../lineup-builder/HeroBottleEditor';
 import SeriesSelector from '../comparison-mode/SeriesSelector';
@@ -15,11 +16,11 @@ import PresetLibrary from '../presets/PresetLibrary';
 import ExportPanel from '../export/ExportPanel';
 import FillSimulatorControls from '../fill-simulator/FillSimulatorControls';
 
-type LineupSubTab = 'generate' | 'batch' | 'individual';
+type LineupSubTab = 'portfolios' | 'generate' | 'batch' | 'individual';
 
 export default function Sidebar() {
   const { ui, setHeroBottle } = useStore();
-  const [lineupSubTab, setSubTab] = useState<LineupSubTab>('generate');
+  const [lineupSubTab, setSubTab] = useState<LineupSubTab>('portfolios');
 
   // A hero picked by clicking a bottle in the 3D view opens Edit Bottle
   useEffect(() => {
@@ -42,6 +43,11 @@ export default function Sidebar() {
             {/* Sub-tab navigation */}
             <div className="flex bg-gray-100 rounded-lg p-0.5">
               <SubTabButton
+                active={lineupSubTab === 'portfolios'}
+                onClick={() => setLineupSubTab('portfolios')}
+                label="Portfolios"
+              />
+              <SubTabButton
                 active={lineupSubTab === 'generate'}
                 onClick={() => setLineupSubTab('generate')}
                 label="Generate"
@@ -59,6 +65,7 @@ export default function Sidebar() {
             </div>
 
             {/* Sub-tab content */}
+            {lineupSubTab === 'portfolios' && <PortfolioManager />}
             {lineupSubTab === 'generate' && <SeriesGenerator />}
             {lineupSubTab === 'batch' && <BatchEditor />}
             {lineupSubTab === 'individual' && <HeroBottleEditor />}

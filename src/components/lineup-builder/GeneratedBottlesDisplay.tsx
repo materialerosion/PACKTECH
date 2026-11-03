@@ -18,11 +18,12 @@ import {
   formatMytLines,
   mytLinesForCapacity,
 } from '@/data/presets/myerstownLines';
-import { List, LayoutGrid, Trash2, BarChart3, Factory } from 'lucide-react';
+import { groupCaps } from '@/services/portfolioService';
+import { List, LayoutGrid, Trash2, BarChart3, Factory, CircleDot, ClipboardCheck, X } from 'lucide-react';
 
 const MYERSTOWN_PRESET_ID = 'myerstown-stock-hdpe';
 
-type DisplayMode = 'list' | 'grid';
+type DisplayMode = 'list' | 'grid' | 'caps';
 
 export default function GeneratedBottlesDisplay() {
   const {
@@ -54,7 +55,10 @@ export default function GeneratedBottlesDisplay() {
         <div>
           <h3 className="font-semibold text-sm text-gray-900">{activeSeries.name}</h3>
           <p className="text-xs text-gray-500">
-            {activeSeries.bottles.length} bottles · {GENERATION_ALGORITHM_NAMES[activeSeries.config.algorithm]}
+            {activeSeries.bottles.length} bottles · {groupCaps(activeSeries.bottles).length} caps
+            {activeSeries.category !== 'portfolio' && activeSeries.config.bottleCount > 0 && !activeSeries.bottles[0]?.presetId
+              ? ` · ${GENERATION_ALGORITHM_NAMES[activeSeries.config.algorithm]}`
+              : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -82,6 +86,13 @@ export default function GeneratedBottlesDisplay() {
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
+            <button
+              onClick={() => setDisplayMode('caps')}
+              className={`p-1.5 rounded ${displayMode === 'caps' ? 'bg-white shadow-sm' : 'text-gray-500'}`}
+              title="Caps"
+            >
+              <CircleDot className="w-4 h-4" />
+            </button>
           </div>
           <button
             onClick={() => {
@@ -99,7 +110,9 @@ export default function GeneratedBottlesDisplay() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-4">
-        {displayMode === 'list' ? (
+        {displayMode === 'caps' ? (
+          <CapsView bottles={activeSeries.bottles} />
+        ) : displayMode === 'list' ? (
           <BottleListView
             series={activeSeries}
             fillRanges={fillRanges}
@@ -138,10 +151,11 @@ interface BottleViewProps {
 }
 
 function BottleListView({ series, fillRanges, selectedIndex, onSelect }: BottleViewProps) {
+  const { sendBottleToFill, removeBottleFromSeries } = useStore();
   return (
     <div className="space-y-1">
       {/* Table header */}
-      <div className="grid grid-cols-7 gap-2 px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+      <div className="grid grid-cols-8 gap-2 px-3 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
         <span>#</span>
         <span>Volume</span>
         <span>Height</span>
@@ -149,6 +163,7 @@ function BottleListView({ series, fillRanges, selectedIndex, onSelect }: BottleV
         <span>Weight</span>
         <span>Min Fill</span>
         <span>Max Fill</span>
+        <span />
       </div>
 
       {/* Table rows */}
@@ -159,7 +174,7 @@ function BottleListView({ series, fillRanges, selectedIndex, onSelect }: BottleV
             key={bottle.id}
             onClick={() => onSelect(selectedIndex === index ? null : index)}
             className={`
-              grid grid-cols-7 gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors text-sm
+              grid grid-cols-8 gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors text-sm
               ${selectedIndex === index
                 ? 'bg-blue-50 border border-blue-200'
                 : 'hover:bg-gray-50 border border-transparent'
@@ -173,10 +188,84 @@ function BottleListView({ series, fillRanges, selectedIndex, onSelect }: BottleV
             <span className="text-gray-600">{formatWeight(bottle)}</span>
             <span className="text-green-600">{range.minFill.toFixed(0)} mL</span>
             <span className="text-blue-600">{range.maxFill.toFixed(0)} mL</span>
+            <span className="flex justify-end gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  sendBottleToFill(bottle, series.id);
+                }}
+                className="p-1 text-gray-400 hover:text-blue-600"
+                title="Headspace assessment"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Remove ${bottle.name} from ${series.name}?`)) {
+                    onSelect(null);
+                    removeBottleFromSeries(series.id, bottle.id);
+                  }
+                }}
+                className="p-1 text-gray-400 hover:text-red-500"
+                title="Remove from portfolio"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </span>
           </div>
         );
       })}
     </div>
+  );
+}
+
+// ─── Caps View ────────────────────────────────────────────────────────
+
+function CapsView({ bottles }: { bottles: Bottle[] }) {
+  const caps = groupCaps(bottles);
+  return (
+    <table className="w-full text-xs">
+      <thead className="text-gray-500 uppercase tracking-wider">
+        <tr>
+          <th className="text-left font-medium px-3 py-2">Cap</th>
+          <th className="text-left font-medium px-2 py-2">Style</th>
+          <th className="text-left font-medium px-2 py-2">Material</th>
+          <th className="text-right font-medium px-2 py-2">Ø × H</th>
+          <th className="text-left font-medium px-2 py-2">Finishes</th>
+          <th className="text-left font-medium px-2 py-2">Bottles</th>
+        </tr>
+      </thead>
+      <tbody>
+        {caps.map((c) => (
+          <tr key={c.key} className="border-t border-gray-100 align-top">
+            <td className="px-3 py-2">
+              <div className="font-medium text-gray-900">{c.label}</div>
+              {c.source && c.source !== c.label && (
+                <div className="text-[10px] text-gray-400">{c.source}</div>
+              )}
+            </td>
+            <td className="px-2 py-2 text-gray-600">{c.style}</td>
+            <td className="px-2 py-2 text-gray-600">{c.material ?? '—'}</td>
+            <td className="px-2 py-2 text-right font-mono text-gray-700 whitespace-nowrap">
+              {c.diameterMm !== null && c.heightMm !== null
+                ? `${c.diameterMm.toFixed(1)} × ${c.heightMm.toFixed(1)} mm`
+                : '—'}
+            </td>
+            <td className="px-2 py-2 text-gray-600 font-mono">{c.finishes.join(', ')}</td>
+            <td className="px-2 py-2">
+              <div className="flex flex-wrap gap-1">
+                {c.bottles.map((name) => (
+                  <span key={name} className="px-1.5 py-0.5 rounded border bg-white border-gray-200 text-gray-700 font-mono">
+                    {name}
+                  </span>
+                ))}
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

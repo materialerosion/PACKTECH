@@ -13,6 +13,9 @@ import BottleCollider from './BottleCollider';
 import ProductBody from './ProductBody';
 import SimulationController from './SimulationController';
 import { Droplets } from 'lucide-react';
+import * as THREE from 'three';
+import { Bottle } from '@/types/bottle';
+import { radiusAt } from '@/services/drawingProfile';
 
 const PHYSICS_TIME_STEP = 1 / 60;
 const MAX_PHYSICS_FRAME_DELTA = 1 / 30;
@@ -41,6 +44,26 @@ function BudgetedPhysicsStepper({ timeRef }: { timeRef: MutableRefObject<number>
     }
   });
   return null;
+}
+
+/** Translucent disc and ring at the settled fill height. */
+function FillLine({ bottle, height }: { bottle: Bottle; height: number }) {
+  const radius = bottle.profile
+    ? radiusAt(bottle.profile.inner, height)
+    : bottle.dimensions.diameter / 2 - (bottle.dimensions.wallThickness ?? 1);
+  if (radius <= 0) return null;
+  return (
+    <group position={[0, height, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh renderOrder={2}>
+        <circleGeometry args={[radius, 48]} />
+        <meshBasicMaterial color="#2563eb" transparent opacity={0.18} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh renderOrder={3}>
+        <ringGeometry args={[radius - 0.6, radius, 64]} />
+        <meshBasicMaterial color="#1d4ed8" transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
 }
 
 export default function FillScene3D() {
@@ -75,7 +98,7 @@ export default function FillScene3D() {
           <Droplets className="w-16 h-16 mx-auto mb-4 opacity-30" />
           <p className="text-lg font-medium">No bottle loaded</p>
           <p className="text-sm mt-2">
-            Send a bottle from the Bottle Generator or Library to begin
+            Pick a portfolio and bottle in the sidebar to begin
           </p>
         </div>
       </div>
@@ -124,6 +147,10 @@ export default function FillScene3D() {
           />
         )}
         
+        {isComplete && fillSim.results?.headspace && (
+          <FillLine bottle={fillBottle} height={fillSim.results.headspace.fillHeightMm} />
+        )}
+
         {/* Ground plane for catching fallen products */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1, 0]} receiveShadow>
           <planeGeometry args={[500, 500]} />

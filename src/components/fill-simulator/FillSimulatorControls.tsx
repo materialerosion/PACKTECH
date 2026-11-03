@@ -4,7 +4,7 @@
  */
 
 import { useStore, useFillSimulation } from '@/store';
-import { Play, RotateCcw, Pause, Droplets, AlertCircle } from 'lucide-react';
+import { Play, RotateCcw, Pause, ClipboardCheck, AlertCircle } from 'lucide-react';
 import ProductPresetSelector from './ProductPresetSelector';
 import FillResultsPanel from './FillResultsPanel';
 
@@ -14,10 +14,16 @@ export default function FillSimulatorControls() {
     pauseFillSimulation,
     resetFillSimulation,
     setTargetQuantity,
+    sendBottleToFill,
+    bottleSeries,
+    activeSeriesId,
+    setActiveSeries,
   } = useStore();
   
   const fillSim = useFillSimulation();
   const { fillBottle, fillProduct, targetQuantity, status, droppedCount, insideCount, elapsedTime, currentPass } = fillSim;
+  const portfolioId = activeSeriesId ?? fillSim.sourceSeriesId ?? '';
+  const portfolio = bottleSeries[portfolioId];
   
   const canStart = fillBottle && fillProduct && (status === 'configuring' || status === 'idle');
   const isRunning = status === 'running' || status === 'settling' || status === 'redropping';
@@ -25,9 +31,51 @@ export default function FillSimulatorControls() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <Droplets className="w-5 h-5 text-blue-600" />
-        <h2 className="text-lg font-semibold text-gray-900">Fill Simulator</h2>
+      <div>
+        <div className="flex items-center gap-2">
+          <ClipboardCheck className="w-5 h-5 text-blue-600" />
+          <h2 className="text-lg font-semibold text-gray-900">Technical Packaging Tool</h2>
+        </div>
+        <p className="text-xs text-gray-500 mt-0.5">Headspace assessment</p>
+      </div>
+
+      {/* Portfolio and bottle */}
+      <div className="space-y-2">
+        <div>
+          <label className="text-xs text-gray-600 font-medium">Portfolio</label>
+          <select
+            value={portfolioId}
+            onChange={(e) => setActiveSeries(e.target.value)}
+            className="input text-sm w-full mt-1"
+            disabled={isRunning}
+          >
+            <option value="" disabled>Select a portfolio...</option>
+            {Object.values(bottleSeries).map((s) => (
+              <option key={s.id} value={s.id}>{s.name} ({s.bottles.length})</option>
+            ))}
+          </select>
+        </div>
+        {portfolio && (
+          <div>
+            <label className="text-xs text-gray-600 font-medium">Bottle</label>
+            <select
+              value={fillSim.sourceSeriesId === portfolio.id ? fillBottle?.id ?? '' : ''}
+              onChange={(e) => {
+                const bottle = portfolio.bottles.find((b) => b.id === e.target.value);
+                if (bottle) sendBottleToFill(bottle, portfolio.id);
+              }}
+              className="input text-sm w-full mt-1"
+              disabled={isRunning}
+            >
+              <option value="" disabled>Select a bottle...</option>
+              {portfolio.bottles.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} · {b.dimensions.neckFinish}{b.closure ? ' · with cap' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
       
       {/* Bottle info */}
@@ -45,7 +93,7 @@ export default function FillSimulatorControls() {
           <div>
             <div className="text-sm font-medium text-yellow-800">No bottle selected</div>
             <div className="text-xs text-yellow-600 mt-1">
-              Send a bottle from the Bottle Generator, Library, or Lineup Builder to start.
+              Pick a portfolio and bottle above, or send one from the Bottle / Cap Portfolio or Bottle Generator.
             </div>
           </div>
         </div>

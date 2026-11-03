@@ -15,17 +15,17 @@ import {
   GitCompare,
   Library,
   FileDown,
-  Droplets
+  ClipboardCheck
 } from 'lucide-react';
 import { AppTab } from '@/types';
 
 const tabs: { id: AppTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'lineup', label: 'Bottle / Cap Portfolio', icon: <LayoutGrid className="w-4 h-4" /> },
+  { id: 'fill', label: 'Technical Packaging Tool', icon: <ClipboardCheck className="w-4 h-4" /> },
   { id: 'generator', label: 'Bottle Generator', icon: <Beaker className="w-4 h-4" /> },
-  { id: 'lineup', label: 'Lineup Builder', icon: <LayoutGrid className="w-4 h-4" /> },
   { id: 'comparison', label: 'Compare', icon: <GitCompare className="w-4 h-4" /> },
   { id: 'presets', label: 'Presets', icon: <Library className="w-4 h-4" /> },
   { id: 'export', label: 'Export', icon: <FileDown className="w-4 h-4" /> },
-  { id: 'fill', label: 'Fill Simulator', icon: <Droplets className="w-4 h-4" /> },
 ];
 
 export default function Header() {

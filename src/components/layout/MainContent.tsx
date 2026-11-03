@@ -9,6 +9,7 @@ import { useStore, useActiveSeries, useActiveSeriesComparison } from '@/store';
 import BottleLibrary from '../bottle-generator/BottleLibrary';
 import LineupShelf from '../lineup-builder/LineupShelf';
 import GeneratedBottlesDisplay from '../lineup-builder/GeneratedBottlesDisplay';
+import PortfolioEvaluation from '../fill-simulator/PortfolioEvaluation';
 
 // Lazy load heavy components for better initial load performance
 const Scene3D = lazy(() => import('../3d/Scene3D'));
@@ -125,7 +126,7 @@ export default function MainContent() {
       </div>
 
       {/* Bottom panel - context-dependent, resizable */}
-      {!isComparisonView && !isFillView && (
+      {!isComparisonView && (
         <div className="flex flex-col flex-shrink-0" style={{ height: `${panelHeight}px` }}>
           {/* Resize handle */}
           <div
@@ -136,7 +137,9 @@ export default function MainContent() {
           </div>
           {/* Panel content */}
           <div className="flex-1 bg-white border-t border-gray-200 overflow-hidden">
-            {ui.activeTab === 'lineup' ? (
+            {isFillView ? (
+              <PortfolioEvaluation />
+            ) : ui.activeTab === 'lineup' ? (
               activeSeries ? (
                 <GeneratedBottlesDisplay />
               ) : (
