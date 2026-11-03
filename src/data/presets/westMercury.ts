@@ -4,7 +4,7 @@
  * conical shoulder, from supplier drawings.
  */
 
-import { Bottle, CollarDrawing } from '@/types';
+import { Bottle, ClosureDrawing, CollarDrawing } from '@/types';
 import { BottleDrawingSpec, INCH } from '@/services/drawingProfile';
 import { StockBottleSpec, buildStockBottles } from './myerstownStock';
 
@@ -55,6 +55,22 @@ const COLLAR_MERCURY_24: CollarDrawing = {
   seatY: BODY_TOP,
 };
 
+/** West 4204-24-13 "24mm Aleve closure", rev B: tapered smooth shell, lugs on the inside. */
+const CLOSURE_24_ALEVE: ClosureDrawing = {
+  source: 'West 4204-24-13 24mm Aleve closure, rev B (polypropylene, 3.3 g)',
+  topDiameter: 1.166 * INCH, // TSC
+  bottomDiameter: 1.356 * INCH, // -2° T/S
+  height: 0.516 * INCH, // with scuff ring; (.501) without
+  // (.134) below line 'B'
+  bottomBandHeight: 0.134 * INCH,
+  ribCount: 0,
+  ribDepth: 0,
+  // "H" .447: top of the closure seat to the bottom of the skirt
+  skirtDepth: 0.447 * INCH,
+  topPictorial: 'push-and-turn',
+  material: 'PP',
+};
+
 export const WEST_MERCURY_BOTTLES: StockBottleSpec[] = [
   {
     capacity: 38,
@@ -65,6 +81,8 @@ export const WEST_MERCURY_BOTTLES: StockBottleSpec[] = [
     neckFinish: '24mm Mercury (double lead)',
     drawing: DRAWING_MERCURY_38,
     collar: COLLAR_MERCURY_24,
+    closure: CLOSURE_24_ALEVE,
+    capStyle: 'child-resistant',
     name: '38 mL Iconic',
   },
 ];
