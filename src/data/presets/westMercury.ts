@@ -84,6 +84,17 @@ const DRAWING_MERCURY_58: BottleDrawingSpec = {
   cone: { ...DRAWING_MERCURY_38.cone!, bodyTop: BODY_TOP_58 },
 };
 
+const BODY_TOP_111 = 3.22 * INCH; // (3.220) ref on assembly 4204-24-09
+
+/** West 7002-04-24 111cc bottle, from assembly 4204-24-09 rev H. */
+const DRAWING_MERCURY_111: BottleDrawingSpec = {
+  ...DRAWING_MERCURY_38,
+  source: 'West 7002-04-24 24mm Mercury 111cc bottle, per assembly 4204-24-09 rev H (HDPE)',
+  ovalDepth: 1.379 * INCH, // (1.379) minor ellipse
+  height: 4.559 * INCH, // (4.559) OAH
+  cone: { ...DRAWING_MERCURY_38.cone!, bodyTop: BODY_TOP_111 },
+};
+
 export const WEST_MERCURY_BOTTLES: StockBottleSpec[] = [
   {
     capacity: 38,
@@ -110,6 +121,19 @@ export const WEST_MERCURY_BOTTLES: StockBottleSpec[] = [
     closure: CLOSURE_24_ALEVE,
     capStyle: 'child-resistant',
     name: '58 mL Iconic',
+  },
+  {
+    capacity: 111,
+    // 19.20 ± 2.5 g assembled, less the 4.8 g collar; no bottle drawing yet
+    plasticWeight: 14.4,
+    diameter: 48.34,
+    height: 115.8,
+    neckFinish: '24mm Mercury (double lead)',
+    drawing: DRAWING_MERCURY_111,
+    collar: { ...COLLAR_MERCURY_24, seatY: BODY_TOP_111 },
+    closure: CLOSURE_24_ALEVE,
+    capStyle: 'child-resistant',
+    name: '111 mL Iconic',
   },
 ];
 
