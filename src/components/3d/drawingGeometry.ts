@@ -187,7 +187,7 @@ function arrow(ctx: CanvasRenderingContext2D, radius: number, from: number, to: 
 
 /** Embossed top-panel artwork as a transparent texture. */
 export function createClosureTopTexture(closure: ClosureDrawing): THREE.CanvasTexture | null {
-  if ((!closure.topText && !closure.flipTop) || typeof document === 'undefined') return null;
+  if ((!closure.topText && !closure.flipTop && !closure.topPictorial) || typeof document === 'undefined') return null;
   const size = 1024;
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -200,6 +200,10 @@ export function createClosureTopTexture(closure: ClosureDrawing): THREE.CanvasTe
 
   if (closure.flipTop) {
     drawFlipTopLid(ctx, R, closure);
+    return toTexture(canvas);
+  }
+  if (closure.topPictorial) {
+    drawPushAndTurn(ctx, R);
     return toTexture(canvas);
   }
   if (!closure.topText) return null;
@@ -229,6 +233,52 @@ export function createClosureTopTexture(closure: ClosureDrawing): THREE.CanvasTe
   arrow(ctx, R * 0.6, -Math.PI * 0.08, Math.PI * 0.14);
 
   return toTexture(canvas);
+}
+
+/** Push-down-and-turn pictorial: press arrow, bottle outline and a sweeping turn arrow. */
+function drawPushAndTurn(ctx: CanvasRenderingContext2D, R: number) {
+  ctx.fillStyle = 'rgba(40, 40, 40, 0.30)';
+  ctx.strokeStyle = 'rgba(40, 40, 40, 0.30)';
+  ctx.lineJoin = 'round';
+
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(0, 0, R * 0.93, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Press arrow above the bottle
+  const w = R * 0.1;
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.5, -R * 0.72);
+  ctx.lineTo(w * 0.5, -R * 0.72);
+  ctx.lineTo(w * 0.5, -R * 0.56);
+  ctx.lineTo(w * 1.1, -R * 0.56);
+  ctx.lineTo(0, -R * 0.44);
+  ctx.lineTo(-w * 1.1, -R * 0.56);
+  ctx.lineTo(-w * 0.5, -R * 0.56);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bottle outline with a neck
+  ctx.lineWidth = R * 0.03;
+  const bx = R * 0.08;
+  ctx.beginPath();
+  ctx.moveTo(bx - R * 0.07, -R * 0.36);
+  ctx.lineTo(bx + R * 0.07, -R * 0.36);
+  ctx.lineTo(bx + R * 0.07, -R * 0.28);
+  ctx.quadraticCurveTo(bx + R * 0.2, -R * 0.26, bx + R * 0.2, -R * 0.12);
+  ctx.lineTo(bx + R * 0.2, R * 0.5);
+  ctx.quadraticCurveTo(bx + R * 0.2, R * 0.58, bx + R * 0.12, R * 0.58);
+  ctx.lineTo(bx - R * 0.12, R * 0.58);
+  ctx.quadraticCurveTo(bx - R * 0.2, R * 0.58, bx - R * 0.2, R * 0.5);
+  ctx.lineTo(bx - R * 0.2, -R * 0.12);
+  ctx.quadraticCurveTo(bx - R * 0.2, -R * 0.26, bx - R * 0.07, -R * 0.28);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Turn arrow sweeping round the left side
+  ctx.lineWidth = R * 0.09;
+  arrow(ctx, R * 0.42, -Math.PI * 0.7, Math.PI * 0.95);
 }
 
 /**

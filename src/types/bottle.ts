@@ -133,6 +133,8 @@ export interface ClosureDrawing {
   skirtDepth: number;
   /** Lines embossed on the top panel, outer ring first. */
   topText?: { arcTop: string; arcBottom: string; center: string[] };
+  /** Embossed instruction graphic in place of text. */
+  topPictorial?: 'push-and-turn';
   material: string;
   /** Defaults to a knurled child-resistant shell. */
   style?: 'child-resistant' | 'flip-top';
