@@ -14,10 +14,9 @@ const DRAWING_86_OVAL: BottleDrawingSpec = {
   ovalDepth: 1.64 * INCH, // side (minor axis)
   height: 2.586 * INCH,
   baseRadius: 0.125 * INCH,
-  // Front view: shoulder tangent at 1.824, TSC at 2.043
+  // Label faces: shoulder tangent at 1.824, TSC at 2.043
   shoulderRadius: (2.043 - 1.824) * INCH,
-  ovalShoulderStart: 1.48 * INCH, // side view shoulder tangent
-  // Neck diameter not dimensioned; the closure allows at most Ø1.377 at the shoulder
+  ovalShoulderStart: 1.48 * INCH, // narrow ends: lower TAN, where the sloping shoulder starts  // Neck diameter not dimensioned; the closure allows at most Ø1.377 at the shoulder
   neckDiameter: 1.3 * INCH,
   neckCollarHeight: (2.586 - 2.043 - 0.531) * INCH,
   beadDiameter: 1.3 * INCH,
@@ -41,9 +40,9 @@ const DRAWING_118_OVAL: BottleDrawingSpec = {
   ...DRAWING_86_OVAL,
   source: 'Berry ZB33OBA118H Aleve 118cc oval, CP-140784-PRT01 rev B, M33-SP400 "Special H" finish',
   height: 3.334 * INCH,
-  // Front view: shoulder tangent at 2.593, TSC at 2.791
+  // Label faces: shoulder tangent at 2.593, TSC at 2.791
   shoulderRadius: (2.791 - 2.593) * INCH,
-  ovalShoulderStart: 2.228 * INCH, // side view shoulder tangent
+  ovalShoulderStart: 2.228 * INCH, // narrow ends: lower TAN
   neckCollarHeight: (3.334 - 2.791 - 0.531) * INCH,
   // 2.280 front label, centred on the straight wall between the heel and shoulder
   labelPanel: { fromBase: 0.219 * INCH, height: 2.28 * INCH },
@@ -57,9 +56,9 @@ const DRAWING_232_OVAL: BottleDrawingSpec = {
   heelDiameter: 2.717 * INCH, // front width at the base
   ovalDepth: 2.126 * INCH, // side (minor axis)
   height: 3.882 * INCH,
-  // Front view: shoulder tangent at 3.046, TSC at 3.320
+  // Label faces: shoulder tangent at 3.046, TSC at 3.320
   shoulderRadius: (3.320 - 3.046) * INCH,
-  ovalShoulderStart: 2.388 * INCH, // side view shoulder tangent
+  ovalShoulderStart: 2.388 * INCH, // narrow ends: lower TAN
   // Neck diameter not dimensioned: just over T, as on the 33 mm sizes
   neckDiameter: 1.78 * INCH,
   neckCollarHeight: (3.882 - 3.320 - 0.549) * INCH,

@@ -118,11 +118,17 @@ export interface DrawingProfile {
   };
   labelPanel?: { bottomY: number; height: number };
   /**
-   * Oval body: the profile is the major (x) axis and the section is an
-   * ellipse of depth/width `depthRatio` (never narrower than the round neck),
-   * cut to the side-view shoulder half-depth sampled as [y, halfDepth].
+   * Oval body: the profile is the major (x) axis and the body section is an
+   * ellipse of depth/width `depthRatio`. The shoulder is lofted from `endY`
+   * (narrow ends) and `faceY` (label faces) up to the round neck at `topY`.
+   * Bottles saved before the loft have no `shoulder` and render as plain
+   * ellipses.
    */
-  oval?: { depthRatio: number; neckRadius: number; slab: [number, number][] };
+  oval?: {
+    depthRatio: number;
+    neckRadius: number;
+    shoulder?: { bodyRadius: number; endY: number; faceY: number; topY: number };
+  };
 }
 
 /** Closure geometry traced from a 2D drawing (mm). */

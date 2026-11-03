@@ -40,32 +40,45 @@ export interface BottleDrawingSpec {
   heelDiameter?: number;
   /** Oval bottles: outside minor-axis depth; `bodyDiameter` is the major axis. */
   ovalDepth?: number;
-  /** Oval bottles: side-view shoulder tangent height (defaults to the front shoulder start). */
+  /** Oval bottles: narrow-end shoulder tangent height, the lower TAN (defaults to the shoulder start). */
   ovalShoulderStart?: number;
 }
 
 type OvalSpec = DrawingProfile['oval'];
 
-/**
- * Oval cross-section of a profile point at half-width `r` (front view) and
- * height `y`, `inset` in from the outside surface: an ellipse whose depth
- * rounds up to the neck radius (so the neck stays round), cut by the
- * side-view shoulder at ±(slab − inset).
- */
-function section(oval: NonNullable<OvalSpec>, r: number, y: number, inset: number) {
-  const depth = Math.min(r, Math.max(oval.depthRatio * r, oval.neckRadius - inset));
-  return { a: r, b: depth, c: slabAt(oval, y) - inset };
+/** Distance from the axis to the ellipse (a, b) along angle (cos, sin). */
+function ellipseRadius(a: number, b: number, cos: number, sin: number): number {
+  return 1 / Math.hypot(cos / a, sin / b);
 }
 
-/** Side-view half-depth limit at `y` (Infinity outside the side shoulder). */
-function slabAt(oval: NonNullable<OvalSpec>, y: number): number {
-  const s = oval.slab ?? [];
-  if (s.length === 0 || y <= s[0][0] || y > s[s.length - 1][0]) return Infinity;
-  let i = 1;
-  while (s[i][0] < y) i++;
-  const [y1, c1] = s[i - 1];
-  const [y2, c2] = s[i];
-  return c1 + ((c2 - c1) * (y - y1)) / (y2 - y1);
+/**
+ * Distance from the axis to the oval surface along angle `theta`, for a
+ * profile point at half-width `r` and height `y`, `inset` in from the outside.
+ *
+ * Below the shoulder the section is an ellipse of half-width `r`. The shoulder
+ * is a loft around the bottle: it starts at `endShoulderY` on the narrow ends
+ * (x axis) and `faceShoulderY` on the label faces (z axis), blending between
+ * them with angle, and closes to the round neck at `topY`. The narrow ends
+ * ramp straight in; the faces roll over (quarter ellipse).
+ */
+export function ovalRadius(oval: OvalSpec, r: number, y: number, theta: number, inset = 0): number {
+  if (!oval || r <= 0) return r;
+  const cos = Math.cos(theta);
+  const sin = Math.sin(theta);
+  const neckR = oval.neckRadius;
+  const sh = oval.shoulder;
+  // The finish and the bore stay round
+  // Tolerances cover float32 vertex positions in the lathe geometry
+  if (y > (sh?.topY ?? Infinity) + 1e-3 || r <= neckR - inset + 1e-3) return r;
+  const depth = Math.min(r, Math.max(oval.depthRatio * r, neckR - inset));
+  if (!sh) return ellipseRadius(r, depth, cos, sin);
+  const face = sin * sin;
+  const start = sh.endY + (sh.faceY - sh.endY) * face;
+  if (y <= start) return ellipseRadius(r, depth, cos, sin);
+  const body = ellipseRadius(sh.bodyRadius, oval.depthRatio * sh.bodyRadius, cos, sin);
+  const t = Math.min(1, (y - start) / Math.max(sh.topY - start, 1e-6));
+  const p = 1 + face;
+  return neckR + (body - neckR) * (1 - t ** p) ** (1 / p) - inset;
 }
 
 /** Point on the cross-section boundary at angle `theta` (x, z). */
@@ -76,67 +89,82 @@ export function sectionPoint(
   theta: number,
   inset = 0
 ): [number, number] {
-  const cos = Math.cos(theta);
-  const sin = Math.sin(theta);
-  if (!oval || r <= 0) return [r * cos, r * sin];
-  const { a, b, c } = section(oval, r, y, inset);
-  let d = 1 / Math.hypot(cos / a, sin / b);
-  if (Math.abs(sin) * d > c) d = c / Math.abs(sin);
-  return [d * cos, d * sin];
+  const d = ovalRadius(oval, r, y, theta, inset);
+  return [d * Math.cos(theta), d * Math.sin(theta)];
 }
 
 /** Whether (x, z) lies inside the cross-section of half-width `r` at height `y`. */
 export function insideSection(oval: OvalSpec, x: number, z: number, r: number, y: number, inset = 0): boolean {
   if (r <= 0) return false;
-  if (!oval) return Math.hypot(x, z) <= r;
-  const { a, b, c } = section(oval, r, y, inset);
-  return (x / a) ** 2 + (z / b) ** 2 <= 1 && Math.abs(z) <= c;
+  return Math.hypot(x, z) <= ovalRadius(oval, r, y, Math.atan2(z, x), inset);
 }
+
+/** Tangent edge where the shoulder meets the body, all the way round. */
+export function ovalShoulderEdges(profile: DrawingProfile): [number, number, number][][] {
+  const oval = profile.oval;
+  const sh = oval?.shoulder;
+  if (!oval || !sh) return [];
+  const loop: [number, number, number][] = [];
+  for (let i = 0; i <= 96; i++) {
+    const theta = (i / 96) * Math.PI * 2;
+    const sin = Math.sin(theta);
+    const y = sh.endY + (sh.faceY - sh.endY) * sin * sin;
+    const d = ellipseRadius(sh.bodyRadius, oval.depthRatio * sh.bodyRadius, Math.cos(theta), sin);
+    loop.push([d * Math.cos(theta), y, d * sin]);
+  }
+  return [loop];
+}
+
+const SECTION_STEPS = 48;
 
 /** Cross-section area relative to the circle of half-width `r`. */
 export function sectionAreaFactor(oval: OvalSpec, y: number, r: number, inset = 0): number {
   if (!oval || r <= 0) return 1;
-  const { a, b, c } = section(oval, r, y, inset);
-  const u = Math.min(1, Math.max(0, c / b));
-  const area = 2 * a * b * (Math.asin(u) + u * Math.sqrt(1 - u * u));
+  let area = 0;
+  for (let i = 0; i < SECTION_STEPS; i++) {
+    const d = ovalRadius(oval, r, y, ((i + 0.5) / SECTION_STEPS) * Math.PI * 2, inset);
+    area += 0.5 * d * d * ((Math.PI * 2) / SECTION_STEPS);
+  }
   return area / (Math.PI * r * r);
 }
 
 /** Cross-section perimeter relative to the circle of half-width `r`. */
 function sectionPerimeterFactor(oval: OvalSpec, y: number, r: number): number {
   if (!oval || r <= 0) return 1;
-  const steps = 64;
   let p = 0;
   let prev = sectionPoint(oval, r, y, 0);
-  for (let i = 1; i <= steps; i++) {
-    const next = sectionPoint(oval, r, y, (i / steps) * Math.PI * 2);
+  for (let i = 1; i <= SECTION_STEPS; i++) {
+    const next = sectionPoint(oval, r, y, (i / SECTION_STEPS) * Math.PI * 2);
     p += Math.hypot(next[0] - prev[0], next[1] - prev[1]);
     prev = next;
   }
   return p / (Math.PI * 2 * r);
 }
 
-/**
- * Two-view oval: the front view is the profile (major axis) and the body is
- * elliptical in section. The side view holds the half-depth to
- * `ovalShoulderStart`, then slopes (parabolic, tangent at the bottom) into the
- * neck at the neck bottom. Cutting the ellipse with that slope gives the
- * saddle line across the front panel.
- */
-function buildOval(spec: BottleDrawingSpec, outer: ProfilePoint[], h: ReturnType<typeof heights>): OvalSpec {
+function buildOval(spec: BottleDrawingSpec, h: ReturnType<typeof heights>): OvalSpec {
   if (!spec.ovalDepth) return undefined;
-  const depthRatio = spec.ovalDepth / spec.bodyDiameter;
-  const neckRadius = spec.neckDiameter / 2;
-  const y0 = Math.min(spec.ovalShoulderStart ?? h.shoulderStart, h.shoulderStart);
-  const y1 = h.neckBottom;
-  const zBody = depthRatio * radiusAt(outer, y0);
-  const slab: [number, number][] = [];
-  const steps = Math.max(12, Math.ceil((y1 - y0) / 0.5));
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    slab.push([y0 + (y1 - y0) * t, neckRadius + (zBody - neckRadius) * (1 - t * t)]);
+  return {
+    depthRatio: spec.ovalDepth / spec.bodyDiameter,
+    neckRadius: spec.neckDiameter / 2,
+    shoulder: {
+      bodyRadius: spec.bodyDiameter / 2,
+      endY: Math.min(spec.ovalShoulderStart ?? h.shoulderStart, h.shoulderStart),
+      faceY: h.shoulderStart,
+      topY: h.neckBottom,
+    },
+  };
+}
+
+/** Oval shoulders are lofted between profile points, so split long segments. */
+function densify(points: ProfilePoint[], step = 1): ProfilePoint[] {
+  const out: ProfilePoint[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const [r1, y1] = points[i - 1];
+    const [r2, y2] = points[i];
+    const n = Math.max(1, Math.ceil(Math.abs(y2 - y1) / step));
+    for (let k = 1; k <= n; k++) out.push([r1 + ((r2 - r1) * k) / n, y1 + ((y2 - y1) * k) / n]);
   }
-  return { depthRatio, neckRadius, slab };
+  return out;
 }
 
 const ARC_STEPS = 10;
@@ -301,9 +329,9 @@ export function buildDrawingProfile(
   plasticWeight: number,
   density = HDPE_DENSITY
 ): DrawingProfile {
-  const outer = buildOuter(spec);
-  const h = heights(spec);
-  const oval = buildOval(spec, outer, h);
+  const oval = buildOval(spec, heights(spec));
+  const fine = (points: ProfilePoint[]) => (oval ? densify(points) : points);
+  const outer = fine(buildOuter(spec));
   const resinMm3 = (plasticWeight / density) * 1000;
   const solid = revolvedVolume(outer, oval);
 
@@ -311,7 +339,7 @@ export function buildDrawingProfile(
   let hi = 3;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
-    const resin = solid - revolvedVolume(buildInner(spec, mid), oval, mid);
+    const resin = solid - revolvedVolume(fine(buildInner(spec, mid)), oval, mid);
     if (resin < resinMm3) lo = mid;
     else hi = mid;
   }
@@ -321,7 +349,7 @@ export function buildDrawingProfile(
   return {
     source: spec.source,
     outer,
-    inner: buildInner(spec, wallThickness),
+    inner: fine(buildInner(spec, wallThickness)),
     wallThickness,
     thread: {
       rootRadius: spec.rootDiameter / 2,
