@@ -66,6 +66,13 @@ const CLOSURE_33_CR_ALEVE: ClosureDrawing = {
   material: 'PP/TPE',
 };
 
+/** Berry ZC3340ASYOF 33mm NCR closure assembly, overmolded (Aleve), CP-210242-ASM01 rev D: the same shell, non-CR. */
+const CLOSURE_33_NCR_ALEVE: ClosureDrawing = {
+  ...CLOSURE_33_CR_ALEVE,
+  source: 'Berry ZC3340ASYOF 33mm NCR assembly overmolded (Aleve), CP-210242-ASM01 rev D (PP/TPE outer, CR-III inner PP, 8.02 g)',
+  topText: { arcTop: '', arcBottom: '', center: ['ALEVE'] },
+};
+
 export const PAIN_CARDIO_BOTTLES: StockBottleSpec[] = [
   {
     capacity: 86.5,
@@ -87,8 +94,8 @@ export const PAIN_CARDIO_BOTTLES: StockBottleSpec[] = [
     height: 84.68,
     neckFinish: 'M33-SP400 Special H',
     drawing: DRAWING_118_OVAL,
-    closure: CLOSURE_33_CR_ALEVE,
-    capStyle: 'child-resistant',
+    closure: CLOSURE_33_NCR_ALEVE,
+    capStyle: 'screw-cap',
     name: '118 mL Oval',
   },
 ];
