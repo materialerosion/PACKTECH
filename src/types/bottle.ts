@@ -82,6 +82,8 @@ export interface Bottle {
   // Exact geometry from a supplier drawing; overrides the parametric shape
   profile?: DrawingProfile;
   closure?: ClosureDrawing;
+  /** Second component snapped over the shoulder (2-piece bottles). */
+  collar?: CollarDrawing;
 
   // Calculated values
   volume: number;              // ml (calculated)
@@ -114,7 +116,9 @@ export interface DrawingProfile {
     crestRadius: number;
     startY: number; // lowest point of the helix
     endY: number;   // highest point of the helix
-    pitch: number;
+    pitch: number;  // lead: rise per turn of one start
+    /** Thread starts, evenly spaced (double lead = 2). */
+    starts?: number;
   };
   labelPanel?: { bottomY: number; height: number };
   /**
@@ -127,11 +131,35 @@ export interface DrawingProfile {
   oval?: {
     depthRatio: number;
     neckRadius: number;
-    shoulder?: { bodyRadius: number; endY: number; faceY: number; topY: number };
+    /** `power` 1 makes a straight cone all round; by default the faces roll over. */
+    shoulder?: { bodyRadius: number; endY: number; faceY: number; topY: number; power?: number };
   };
 }
 
 /** Closure geometry traced from a 2D drawing (mm). */
+/**
+ * Oval shroud snapped over the bottle shoulder: lofted straight from an
+ * elliptical base to a round top, with grip tabs on the narrow ends.
+ */
+export interface CollarDrawing {
+  source: string;
+  material: string;
+  /** Major and minor axes of the base ellipse. */
+  baseWidth: number;
+  baseDepth: number;
+  /** Outside diameter of the flat top. */
+  topDiameter: number;
+  /** Hole through the top, over the finish. */
+  holeDiameter: number;
+  /** Base to the flat top (tab step height). */
+  height: number;
+  /** Tabs stand this far above the top. */
+  tabHeight: number;
+  wallThickness: number;
+  /** Height on the bottle where the collar base sits. */
+  seatY: number;
+}
+
 export interface ClosureDrawing {
   source: string;
   topDiameter: number;

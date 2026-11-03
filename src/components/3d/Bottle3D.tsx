@@ -7,11 +7,12 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { Bottle, ClosureDrawing, DrawingProfile } from '@/types';
+import { Bottle, ClosureDrawing, CollarDrawing, DrawingProfile } from '@/types';
 import { useStore } from '@/store';
 import { ovalShoulderEdges, profileTop, sectionPoint } from '@/services/drawingProfile';
 import {
   createClosureGeometries,
+  createCollarGeometries,
   createClosureTopTexture,
   createFlipTopGeometries,
   createProfileBodyGeometry,
@@ -100,6 +101,7 @@ export default function Bottle3D({
         <DrawingBottle
           profile={bottle.profile}
           closure={bottle.closure}
+          collar={bottle.collar}
           bodyColor={bottle.bodyColor}
           capColor={bottle.capColor}
           opacity={opacity}
@@ -235,6 +237,7 @@ export default function Bottle3D({
 function DrawingBottle({
   profile,
   closure,
+  collar,
   bodyColor,
   capColor,
   opacity,
@@ -242,6 +245,7 @@ function DrawingBottle({
 }: {
   profile: DrawingProfile;
   closure?: ClosureDrawing;
+  collar?: CollarDrawing;
   bodyColor: string;
   capColor: string;
   opacity: number;
@@ -302,11 +306,53 @@ function DrawingBottle({
         </lineLoop>
       ))}
       {!dimmed && shoulderEdges.map((line, i) => <primitive key={`s${i}`} object={line} />)}
+      {collar && (
+        <group position={[0, collar.seatY, 0]}>
+          <CollarModel collar={collar} color={capColor} opacity={dimmed ? opacity : 1} />
+        </group>
+      )}
       {closure && (
         <group position={[0, profileTop(profile) - closure.skirtDepth, 0]}>
           <ClosureModel closure={closure} color={capColor} opacity={dimmed ? opacity : 1} />
         </group>
       )}
+    </group>
+  );
+}
+
+/** Collar from a drawing, with y = 0 at its base. */
+function CollarModel({ collar, color, opacity }: { collar: CollarDrawing; color: string; opacity: number }) {
+  const parts = useMemo(() => createCollarGeometries(collar), [collar]);
+  const faded = opacity < 1;
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color,
+        transparent: faded,
+        opacity,
+        depthWrite: !faded,
+        roughness: 0.45,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    [color, opacity, faded]
+  );
+  const gripMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color).multiplyScalar(0.85),
+        transparent: faded,
+        opacity,
+        depthWrite: !faded,
+        roughness: 0.7,
+        side: THREE.DoubleSide,
+      }),
+    [color, opacity, faded]
+  );
+  return (
+    <group>
+      <mesh geometry={parts.shell} material={material} castShadow={!faded} receiveShadow />
+      <mesh geometry={parts.grips} material={gripMaterial} castShadow={!faded} />
     </group>
   );
 }

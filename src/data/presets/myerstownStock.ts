@@ -4,7 +4,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { Bottle, BottleMaterial, CapStyle, ClosureDrawing, DEFAULT_DIMENSIONS } from '@/types';
+import { Bottle, BottleMaterial, CapStyle, ClosureDrawing, CollarDrawing, DEFAULT_DIMENSIONS } from '@/types';
 import { VolumeCalculator } from '@/services/volumeCalculator';
 import {
   BottleDrawingSpec,
@@ -23,6 +23,7 @@ export interface StockBottleSpec {
   neckFinish: string;
   drawing?: BottleDrawingSpec;
   closure?: ClosureDrawing;
+  collar?: CollarDrawing;
   capStyle?: CapStyle;
   /** Defaults to HDPE. */
   material?: BottleMaterial;
@@ -430,6 +431,7 @@ export function buildStockBottles(
       weightTolerance: spec.weightTolerance,
       profile: stockProfile(spec),
       closure: spec.closure,
+      collar: spec.collar,
       volume: 0,
       surfaceArea: 0,
       createdAt: now,

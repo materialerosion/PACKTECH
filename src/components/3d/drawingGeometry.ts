@@ -3,7 +3,8 @@
  */
 
 import * as THREE from 'three';
-import { ClosureDrawing, DrawingProfile } from '@/types';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { ClosureDrawing, CollarDrawing, DrawingProfile } from '@/types';
 import { sectionPoint } from '@/services/drawingProfile';
 
 const LATHE_SEGMENTS = 96;
@@ -39,14 +40,15 @@ class HelixCurve extends THREE.Curve<THREE.Vector3> {
     private radius: number,
     private startY: number,
     private endY: number,
-    private pitch: number
+    private pitch: number,
+    private phase = 0
   ) {
     super();
   }
 
   getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
     const turns = (this.endY - this.startY) / this.pitch;
-    const angle = t * turns * Math.PI * 2;
+    const angle = this.phase + t * turns * Math.PI * 2;
     return target.set(
       Math.cos(angle) * this.radius,
       this.startY + t * (this.endY - this.startY),
@@ -59,8 +61,129 @@ export function createThreadGeometry(profile: DrawingProfile): THREE.BufferGeome
   const thread = profile.thread;
   if (!thread) return null;
   const tube = Math.max((thread.crestRadius - thread.rootRadius) / 2, 0.3);
-  const curve = new HelixCurve(thread.crestRadius - tube, thread.startY, thread.endY, thread.pitch);
-  return new THREE.TubeGeometry(curve, 160, tube, 8, false);
+  const starts = thread.starts ?? 1;
+  const helices = Array.from({ length: starts }, (_, k) => {
+    const curve = new HelixCurve(
+      thread.crestRadius - tube,
+      thread.startY,
+      thread.endY,
+      thread.pitch,
+      (k / starts) * Math.PI * 2
+    );
+    return new THREE.TubeGeometry(curve, 160, tube, 8, false);
+  });
+  return helices.length === 1 ? helices[0] : mergeGeometries(helices);
+}
+
+/** Indexed surface over a (rows + 1) × (cols + 1) grid of points. */
+function gridSurface(
+  rows: number,
+  cols: number,
+  point: (i: number, j: number) => [number, number, number]
+): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const index: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= cols; j++) positions.push(...point(i, j));
+  }
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const a = i * (cols + 1) + j;
+      const b = a + cols + 1;
+      index.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+export interface CollarGeometries {
+  shell: THREE.BufferGeometry;
+  /** Raised grip pads on the narrow ends, with their ribs and top tabs. */
+  grips: THREE.BufferGeometry;
+}
+
+/** Collar with y = 0 at its base. */
+export function createCollarGeometries(collar: CollarDrawing): CollarGeometries {
+  const segments = LATHE_SEGMENTS;
+  const w = collar.wallThickness;
+  const h = collar.height;
+  const topR = collar.topDiameter / 2;
+  const holeR = collar.holeDiameter / 2;
+  const a = collar.baseWidth / 2;
+  const b = collar.baseDepth / 2;
+
+  // Each wall is ruled: straight from the base ellipse to the round top
+  const radius = (theta: number, y: number, inset: number) => {
+    const base = 1 / Math.hypot(Math.cos(theta) / (a - inset), Math.sin(theta) / (b - inset));
+    const t = Math.min(1, Math.max(0, y / h));
+    return base + (topR - inset - base) * t;
+  };
+  const ring = (theta: number, r: number, y: number): [number, number, number] => [
+    r * Math.cos(theta),
+    y,
+    r * Math.sin(theta),
+  ];
+  const angle = (j: number) => (j / segments) * Math.PI * 2;
+  const rows = 12;
+
+  const outer = gridSurface(rows, segments, (i, j) => {
+    const y = (h * i) / rows;
+    return ring(angle(j), radius(angle(j), y, 0), y);
+  });
+  const inner = gridSurface(rows, segments, (i, j) => {
+    const y = ((h - w) * (rows - i)) / rows;
+    return ring(angle(j), radius(angle(j), y, w), y);
+  });
+  const top = gridSurface(1, segments, (i, j) => ring(angle(j), i === 0 ? topR : holeR, h));
+  const underside = gridSurface(1, segments, (i, j) => ring(angle(j), i === 0 ? holeR : topR - w, h - w));
+  const hole = gridSurface(1, segments, (i, j) => ring(angle(j), holeR, i === 0 ? h : h - w));
+  const rim = gridSurface(1, segments, (i, j) => ring(angle(j), radius(angle(j), 0, i === 0 ? w : 0), 0));
+  const shell = mergeGeometries([outer, inner, top, underside, hole, rim]);
+
+  // Grip pads across each narrow end, from part-way up the slope to the top edge
+  const padHalfWidth = Math.min(topR * 0.55, b * 0.5);
+  const padLift = 0.4;
+  const ribLift = 1.2;
+  const ribCount = 6;
+  const grips: THREE.BufferGeometry[] = [];
+  for (const side of [0, Math.PI]) {
+    const surface = (z: number, y: number, lift: number): [number, number, number] => {
+      let theta = side;
+      for (let k = 0; k < 4; k++) {
+        const s = Math.max(-1, Math.min(1, z / radius(theta, y, 0)));
+        theta = side === 0 ? Math.asin(s) : Math.PI - Math.asin(s);
+      }
+      return ring(theta, radius(theta, y, 0) + lift, y);
+    };
+    const padBottom = h * 0.35;
+    grips.push(
+      gridSurface(8, 8, (i, j) =>
+        surface(-padHalfWidth + (2 * padHalfWidth * j) / 8, padBottom + ((h - padBottom) * i) / 8, padLift)
+      )
+    );
+    for (let k = 0; k < ribCount; k++) {
+      const y0 = padBottom + ((h - padBottom) * (k + 0.6)) / (ribCount + 1);
+      const y1 = y0 + (h - padBottom) / (ribCount + 1) / 2.5;
+      grips.push(
+        gridSurface(1, 8, (i, j) =>
+          surface(-padHalfWidth * 0.85 + (1.7 * padHalfWidth * j) / 8, i === 0 ? y0 : y1, ribLift)
+        )
+      );
+    }
+    // Tab standing above the top at the narrow end
+    const tab = new THREE.BoxGeometry(w * 1.6, collar.tabHeight + w, padHalfWidth * 2);
+    tab.translate(Math.cos(side) * (topR - w * 0.8), h + (collar.tabHeight - w) / 2, 0);
+    tab.deleteAttribute('uv');
+    grips.push(tab);
+  }
+  return {
+    shell,
+    grips: mergeGeometries(grips.map((g) => (g.index ? g.toNonIndexed() : g))),
+  };
 }
 
 export interface ClosureGeometries {

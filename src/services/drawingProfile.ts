@@ -42,6 +42,14 @@ export interface BottleDrawingSpec {
   ovalDepth?: number;
   /** Oval bottles: narrow-end shoulder tangent height, the lower TAN (defaults to the shoulder start). */
   ovalShoulderStart?: number;
+  /**
+   * Straight conical shoulder in place of the `shoulderRadius` arc: the body
+   * ends at `bodyTop`, steps in to the undercut band, then runs straight to
+   * the neck.
+   */
+  cone?: { bodyTop: number; undercutDiameter: number; undercutHeight: number };
+  /** Thread starts (double lead = 2); `threadPitch` is the lead. */
+  threadStarts?: number;
 }
 
 type OvalSpec = DrawingProfile['oval'];
@@ -77,7 +85,7 @@ export function ovalRadius(oval: OvalSpec, r: number, y: number, theta: number, 
   if (y <= start) return ellipseRadius(r, depth, cos, sin);
   const body = ellipseRadius(sh.bodyRadius, oval.depthRatio * sh.bodyRadius, cos, sin);
   const t = Math.min(1, (y - start) / Math.max(sh.topY - start, 1e-6));
-  const p = 1 + face;
+  const p = sh.power ?? 1 + face;
   return neckR + (body - neckR) * (1 - t ** p) ** (1 / p) - inset;
 }
 
@@ -143,9 +151,25 @@ function sectionPerimeterFactor(oval: OvalSpec, y: number, r: number): number {
 
 function buildOval(spec: BottleDrawingSpec, h: ReturnType<typeof heights>): OvalSpec {
   if (!spec.ovalDepth) return undefined;
+  const depthRatio = spec.ovalDepth / spec.bodyDiameter;
+  const neckRadius = spec.neckDiameter / 2;
+  if (spec.cone) {
+    const coneStart = spec.cone.bodyTop + spec.cone.undercutHeight;
+    return {
+      depthRatio,
+      neckRadius,
+      shoulder: {
+        bodyRadius: spec.cone.undercutDiameter / 2,
+        endY: coneStart,
+        faceY: coneStart,
+        topY: h.neckBottom,
+        power: 1,
+      },
+    };
+  }
   return {
-    depthRatio: spec.ovalDepth / spec.bodyDiameter,
-    neckRadius: spec.neckDiameter / 2,
+    depthRatio,
+    neckRadius,
     shoulder: {
       bodyRadius: spec.bodyDiameter / 2,
       endY: Math.min(spec.ovalShoulderStart ?? h.shoulderStart, h.shoulderStart),
@@ -227,8 +251,15 @@ function buildOuter(spec: BottleDrawingSpec): ProfilePoint[] {
 
   const points: ProfilePoint[] = baseCurve(spec, 0);
   points.push(...arc(heelR - rb, rb, rb, -Math.PI / 2, 0).slice(1));
-  points.push([R, h.shoulderStart]);
-  points.push(...arc(centerR, h.shoulderStart, spec.shoulderRadius, 0, h.endAngle).slice(1));
+  if (spec.cone) {
+    const undercutR = spec.cone.undercutDiameter / 2;
+    points.push([R, spec.cone.bodyTop]);
+    points.push([undercutR, spec.cone.bodyTop]);
+    points.push([undercutR, spec.cone.bodyTop + spec.cone.undercutHeight]);
+  } else {
+    points.push([R, h.shoulderStart]);
+    points.push(...arc(centerR, h.shoulderStart, spec.shoulderRadius, 0, h.endAngle).slice(1));
+  }
   points.push([neckR, h.neckBottom]);
   points.push([neckR, h.beadBottom]);
   points.push([beadR, h.beadBottom + (beadR - neckR) * Math.tan((3 * Math.PI) / 180)]);
@@ -257,6 +288,18 @@ function buildInner(spec: BottleDrawingSpec, t: number): ProfilePoint[] {
 
   const points: ProfilePoint[] = baseCurve(spec, t);
   points.push(...arc(heelR - rb, rb, innerHeel, -Math.PI / 2, 0).slice(1));
+  if (spec.cone) {
+    const undercutR = spec.cone.undercutDiameter / 2 - t;
+    const coneStart = spec.cone.bodyTop + spec.cone.undercutHeight;
+    const neckTop = Math.max(h.neckBottom, h.beadBottom - t);
+    points.push([R - t, spec.cone.bodyTop - t]);
+    points.push([undercutR, spec.cone.bodyTop]);
+    points.push([undercutR, coneStart]);
+    points.push([innerNeckR, neckTop]);
+    points.push([boreR, neckTop]);
+    points.push([boreR, h.top]);
+    return points;
+  }
   points.push([R - t, h.shoulderStart]);
   points.push(...arc(centerR, h.shoulderStart, innerShoulder, 0, endAngle).slice(1));
   points.push([innerNeckR, Math.max(shoulderTop, h.beadBottom - t)]);
@@ -357,6 +400,7 @@ export function buildDrawingProfile(
       startY: endY - spec.threadPitch * spec.threadTurns,
       endY,
       pitch: spec.threadPitch,
+      starts: spec.threadStarts,
     },
     labelPanel: spec.labelPanel
       ? { bottomY: spec.labelPanel.fromBase, height: spec.labelPanel.height }
