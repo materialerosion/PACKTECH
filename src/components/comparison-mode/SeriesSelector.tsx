@@ -1,25 +1,17 @@
 /**
  * Series Selector Component
- * Two portfolio dropdowns for the side-by-side comparison.
+ * Portfolio and bottle picks for the side-by-side comparison.
  */
 
 import { useStore } from '@/store';
-import { groupCaps } from '@/services/portfolioService';
+import { BottleSeries } from '@/types/bottleSeries';
 import { ArrowUpDown, GitCompare } from 'lucide-react';
-import { useCompareSelection } from './compareSelection';
+import { CompareSide, useCompareSelection } from './compareSelection';
 
 export default function SeriesSelector() {
   const { bottleSeries } = useStore();
-  const { portfolioA, portfolioB, setPortfolioA, setPortfolioB, swap, units, setUnits, view, setView } =
-    useCompareSelection();
-
+  const { swap, units, setUnits, view, setView, A, B } = useCompareSelection();
   const portfolios = Object.values(bottleSeries);
-  const label = (id: string) => {
-    const s = bottleSeries[id];
-    if (!s) return '';
-    const caps = groupCaps(s.bottles).length;
-    return `${s.bottles.length} bottles · ${caps} cap${caps === 1 ? '' : 's'}`;
-  };
 
   return (
     <div className="space-y-4">
@@ -28,42 +20,24 @@ export default function SeriesSelector() {
         Compare Portfolios
       </h3>
 
-      {portfolios.length < 2 ? (
-        <div className="text-sm text-gray-400 text-center py-4">
-          Create at least 2 portfolios to compare
-        </div>
+      {portfolios.length === 0 ? (
+        <div className="text-sm text-gray-400 text-center py-4">Create a portfolio to compare</div>
       ) : (
         <>
-          <PortfolioPicker
-            title="Portfolio A"
-            accent="text-blue-600"
-            value={portfolioA}
-            other={portfolioB}
-            onChange={setPortfolioA}
-            portfolios={portfolios}
-            detail={label(portfolioA)}
-          />
+          <SidePicker side="A" title="Side A" accent="text-blue-600" portfolios={portfolios} />
           <div className="flex justify-center">
             <button
               onClick={swap}
-              disabled={!portfolioA && !portfolioB}
+              disabled={!A.portfolioId && !B.portfolioId}
               className="text-xs text-gray-500 hover:text-gray-800 flex items-center gap-1 disabled:opacity-40"
             >
               <ArrowUpDown className="w-3.5 h-3.5" />
-              Swap
+              Swap sides
             </button>
           </div>
-          <PortfolioPicker
-            title="Portfolio B"
-            accent="text-emerald-600"
-            value={portfolioB}
-            other={portfolioA}
-            onChange={setPortfolioB}
-            portfolios={portfolios}
-            detail={label(portfolioB)}
-          />
+          <SidePicker side="B" title="Side B" accent="text-emerald-600" portfolios={portfolios} />
 
-          <div className="pt-2 border-t border-gray-200 space-y-3">
+          <div className="pt-3 border-t border-gray-200 space-y-3">
             <Toggle
               label="View"
               value={view}
@@ -89,35 +63,74 @@ export default function SeriesSelector() {
   );
 }
 
-function PortfolioPicker({
+function SidePicker({
+  side,
   title,
   accent,
-  value,
-  other,
-  onChange,
   portfolios,
-  detail,
 }: {
+  side: CompareSide;
   title: string;
   accent: string;
-  value: string;
-  other: string;
-  onChange: (id: string) => void;
-  portfolios: { id: string; name: string }[];
-  detail: string;
+  portfolios: BottleSeries[];
 }) {
+  const pick = useCompareSelection((s) => s[side]);
+  const { setPortfolio, setBottles } = useCompareSelection();
+  const series = portfolios.find((p) => p.id === pick.portfolioId);
+  const bottles = series ? [...series.bottles].sort((a, b) => a.volume - b.volume) : [];
+  const isOn = (id: string) => pick.bottleIds === null || pick.bottleIds.includes(id);
+  const shown = bottles.filter((b) => isOn(b.id)).length;
+
+  const toggle = (id: string) => {
+    const current = pick.bottleIds ?? bottles.map((b) => b.id);
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+    setBottles(side, next.length === bottles.length ? null : next);
+  };
+
   return (
     <div>
       <label className={`text-xs font-semibold ${accent}`}>{title}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="input text-sm mt-1">
+      <select
+        value={pick.portfolioId}
+        onChange={(e) => setPortfolio(side, e.target.value)}
+        className="input text-sm mt-1"
+      >
         <option value="">Select portfolio...</option>
         {portfolios.map((p) => (
-          <option key={p.id} value={p.id} disabled={p.id === other}>
+          <option key={p.id} value={p.id}>
             {p.name}
           </option>
         ))}
       </select>
-      {detail && <p className="text-xs text-gray-500 mt-1">{detail}</p>}
+
+      {series && (
+        <div className="mt-2 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-gray-100 text-xs">
+            <span className="text-gray-500">
+              {shown} of {bottles.length} bottles
+            </span>
+            <span className="flex gap-2">
+              <button onClick={() => setBottles(side, null)} className="text-primary-600 hover:underline">
+                All
+              </button>
+              <button onClick={() => setBottles(side, [])} className="text-primary-600 hover:underline">
+                None
+              </button>
+            </span>
+          </div>
+          <div className="max-h-48 overflow-y-auto py-1">
+            {bottles.map((b) => (
+              <label
+                key={b.id}
+                className="flex items-center gap-2 px-2.5 py-1 text-sm text-gray-800 hover:bg-gray-50 cursor-pointer"
+              >
+                <input type="checkbox" checked={isOn(b.id)} onChange={() => toggle(b.id)} className="rounded" />
+                <span className="truncate">{b.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

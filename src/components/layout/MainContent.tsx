@@ -69,27 +69,44 @@ export default function MainContent() {
   }, []);
 
   // Portfolios picked in the Compare tab
-  const { portfolioA, portfolioB, units, view } = useCompareSelection();
-  const compSeries1 = bottleSeries[portfolioA] ?? null;
-  const compSeries2 = bottleSeries[portfolioB] ?? null;
+  const { A, B, units, view } = useCompareSelection();
+  const picked = useMemo(
+    () =>
+      [A, B].flatMap((pick, side) => {
+        const series = bottleSeries[pick.portfolioId];
+        if (!series) return [];
+        const bottles = pick.bottleIds
+          ? series.bottles.filter((b) => pick.bottleIds!.includes(b.id))
+          : series.bottles;
+        return bottles.length ? [{ series: { ...series, bottles }, side }] : [];
+      }),
+    [A, B, bottleSeries]
+  );
+  const compareSides = useMemo(() => picked.map((p) => p.series), [picked]);
+  const compareSideIndex = useMemo(() => picked.map((p) => p.side), [picked]);
+  const [compSeries1, compSeries2] = compareSides;
   const coverage = useMemo(
     () => (compSeries1 && compSeries2 ? ComparisonService.compareSeries(compSeries1, compSeries2) : null),
     [compSeries1, compSeries2]
   );
 
-  const isComparisonView = ui.activeTab === 'comparison' && !!compSeries1 && !!compSeries2;
+  const isComparisonView = ui.activeTab === 'comparison' && compareSides.length > 0;
   const isFillView = ui.activeTab === 'fill';
 
   return (
     <main className="flex-1 flex flex-col overflow-hidden bg-gray-100">
       {/* Main viewport */}
       <div className="flex-1 relative min-h-0">
-        {isComparisonView && compSeries1 && compSeries2 ? (
+        {isComparisonView ? (
           /* Comparison view replaces 3D viewport */
           <Suspense fallback={<LoadingSpinner />}>
             <div className="w-full h-full overflow-auto p-6 space-y-6">
-              {view === 'dimensions' || !coverage ? (
-                <PortfolioDimensionComparison portfolioA={compSeries1} portfolioB={compSeries2} units={units} />
+              {view === 'dimensions' ? (
+                <PortfolioDimensionComparison sides={compareSides} sideIndex={compareSideIndex} units={units} />
+              ) : !coverage || !compSeries1 || !compSeries2 ? (
+                <div className="text-sm text-gray-500 text-center py-12">
+                  Fill coverage needs bottles picked on both sides.
+                </div>
               ) : (
                 <>
                   <ComparisonChart series1={compSeries1} series2={compSeries2} comparison={coverage} />

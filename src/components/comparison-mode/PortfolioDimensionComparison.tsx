@@ -12,10 +12,17 @@ import { closureLabel } from '@/services/portfolioService';
 import { CompareUnits } from './compareSelection';
 
 interface Props {
-  portfolioA: BottleSeries;
-  portfolioB: BottleSeries;
+  /** One or two sides, each a portfolio narrowed to the picked bottles. */
+  sides: BottleSeries[];
+  /** 0 for side A, 1 for side B, per entry in `sides`. */
+  sideIndex: number[];
   units: CompareUnits;
 }
+
+const SIDE_STYLE = [
+  { letter: 'A', text: 'text-blue-600', stroke: '#2563eb' },
+  { letter: 'B', text: 'text-emerald-600', stroke: '#059669' },
+];
 
 /** Key measurements of one bottle; lengths in mm. */
 interface Measures {
@@ -113,20 +120,29 @@ const ROWS: Row[] = [
 const unitOf = (row: Extract<Row, { label: string }>, u: CompareUnits) =>
   row.kind === 'length' ? u : row.kind === 'area' ? (u === 'mm' ? 'cm²' : 'in²') : row.unit ?? '';
 
+/** Signed difference with its percentage of the A value. */
+function difference(delta: number, base: number, fmt: (v: number) => string): string {
+  const sign = delta > 0 ? '+' : delta < 0 ? '−' : '';
+  const pct = base ? ` (${sign}${Math.abs((delta / base) * 100).toFixed(0)}%)` : '';
+  return `${sign}${fmt(Math.abs(delta))}${pct}`;
+}
+
 function range(values: (number | undefined)[]): [number, number] | null {
   const v = values.filter((x): x is number => x !== undefined);
   return v.length ? [Math.min(...v), Math.max(...v)] : null;
 }
 
-export default function PortfolioDimensionComparison({ portfolioA, portfolioB, units }: Props) {
+export default function PortfolioDimensionComparison({ sides: picked, sideIndex, units }: Props) {
   const sides = useMemo(
     () =>
-      [portfolioA, portfolioB].map((s) => {
+      picked.map((s, i) => {
         const bottles = [...s.bottles].sort((a, b) => a.volume - b.volume);
-        return { series: s, bottles, measures: bottles.map(measure) };
+        return { series: s, style: SIDE_STYLE[sideIndex[i] ?? i], bottles, measures: bottles.map(measure) };
       }),
-    [portfolioA, portfolioB]
+    [picked, sideIndex]
   );
+  const columns = sides.length > 1 ? 'grid-cols-2' : 'grid-cols-1';
+  const headToHead = sides.length === 2 && sides.every((s) => s.bottles.length === 1);
 
   // One mm-to-px scale for every silhouette, so sizes compare directly
   const tallest = Math.max(...sides.flatMap((s) => s.measures.map((m) => m.heightWithClosure)), 1);
@@ -135,15 +151,15 @@ export default function PortfolioDimensionComparison({ portfolioA, portfolioB, u
   return (
     <div className="space-y-6">
       {/* Silhouettes */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className={`grid ${columns} gap-4`}>
         {sides.map((side, i) => (
-          <div key={side.series.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <SideHeader index={i} series={side.series} />
+          <div key={i} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <SideHeader style={side.style} series={side.series} />
             <div className="overflow-x-auto px-4 py-4">
               <div className="flex items-end gap-4 min-w-max">
                 {side.bottles.map((b, k) => (
                   <div key={b.id} className="flex flex-col items-center">
-                    <Silhouette bottle={b} pxPerMm={pxPerMm} tallest={tallest} accent={i === 0 ? '#2563eb' : '#059669'} />
+                    <Silhouette bottle={b} pxPerMm={pxPerMm} tallest={tallest} accent={side.style.stroke} />
                     <div className="mt-2 text-xs font-semibold text-gray-800 whitespace-nowrap">{b.name}</div>
                     <div className="text-[11px] text-gray-500 font-mono whitespace-nowrap">
                       {len(side.measures[k].heightWithClosure, units)} × {len(side.measures[k].width, units)} {units}
@@ -159,15 +175,25 @@ export default function PortfolioDimensionComparison({ portfolioA, portfolioB, u
       {/* Range summary */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-200">
-          <h4 className="text-sm font-semibold text-gray-900">Range summary</h4>
-          <p className="text-xs text-gray-500">Smallest to largest bottle in each portfolio</p>
+          <h4 className="text-sm font-semibold text-gray-900">
+            {headToHead ? 'Head-to-head' : 'Range summary'}
+          </h4>
+          <p className="text-xs text-gray-500">
+            {headToHead
+              ? 'Side B against Side A; percentages are relative to A'
+              : 'Smallest to largest picked bottle on each side'}
+          </p>
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               <th className="px-4 py-2">Measurement</th>
-              <th className="px-4 py-2 text-right text-blue-600">{portfolioA.name}</th>
-              <th className="px-4 py-2 text-right text-emerald-600">{portfolioB.name}</th>
+              {sides.map((side, i) => (
+                <th key={i} className={`px-4 py-2 text-right ${side.style.text}`}>
+                  {side.style.letter} · {headToHead ? side.bottles[0].name : side.series.name}
+                </th>
+              ))}
+              {headToHead && <th className="px-4 py-2 text-right">Difference (B − A)</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -186,6 +212,11 @@ export default function PortfolioDimensionComparison({ portfolioA, portfolioB, u
                       {c ? (c[0] === c[1] ? fmt(c[0]) : `${fmt(c[0])} – ${fmt(c[1])}`) : '—'}
                     </td>
                   ))}
+                  {headToHead && (
+                    <td className="px-4 py-2 text-right font-mono text-gray-600">
+                      {cells[0] && cells[1] ? difference(cells[1][0] - cells[0][0], cells[0][0], fmt) : '—'}
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -194,10 +225,10 @@ export default function PortfolioDimensionComparison({ portfolioA, portfolioB, u
       </div>
 
       {/* Per-bottle detail, rows aligned across both portfolios */}
-      <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 ${sides.length > 1 ? '2xl:grid-cols-2' : ''} gap-4`}>
         {sides.map((side, i) => (
-          <div key={side.series.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <SideHeader index={i} series={side.series} />
+          <div key={i} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <SideHeader style={side.style} series={side.series} />
             <div className="overflow-x-auto">
               <table className="text-sm w-full">
                 <thead>
@@ -255,14 +286,12 @@ export default function PortfolioDimensionComparison({ portfolioA, portfolioB, u
   );
 }
 
-function SideHeader({ index, series }: { index: number; series: BottleSeries }) {
+function SideHeader({ style, series }: { style: (typeof SIDE_STYLE)[number]; series: BottleSeries }) {
   return (
     <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
-      <span className={`text-xs font-bold ${index === 0 ? 'text-blue-600' : 'text-emerald-600'}`}>
-        {index === 0 ? 'A' : 'B'}
-      </span>
+      <span className={`text-xs font-bold ${style.text}`}>{style.letter}</span>
       <h4 className="text-sm font-semibold text-gray-900 truncate">{series.name}</h4>
-      <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">{series.bottles.length} bottles</span>
+      <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">{series.bottles.length} {series.bottles.length === 1 ? 'bottle' : 'bottles'}</span>
     </div>
   );
 }
