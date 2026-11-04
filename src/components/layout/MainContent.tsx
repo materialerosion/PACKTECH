@@ -4,8 +4,10 @@
  * bottle library, generated bottles display, and comparison views.
  */
 
-import React, { Suspense, lazy, useState, useCallback, useEffect, useRef } from 'react';
-import { useStore, useActiveSeries, useActiveSeriesComparison } from '@/store';
+import React, { Suspense, lazy, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useStore, useActiveSeries } from '@/store';
+import { ComparisonService } from '@/services/comparisonService';
+import { useCompareSelection } from '../comparison-mode/compareSelection';
 import BottleLibrary from '../bottle-generator/BottleLibrary';
 import LineupShelf from '../lineup-builder/LineupShelf';
 import GeneratedBottlesDisplay from '../lineup-builder/GeneratedBottlesDisplay';
@@ -17,6 +19,7 @@ const FillScene3D = lazy(() => import('../fill-simulator/FillScene3D'));
 const ComparisonChart = lazy(() => import('../comparison-mode/ComparisonChart'));
 const ComparisonTable = lazy(() => import('../comparison-mode/ComparisonTable'));
 const AnalysisReport = lazy(() => import('../comparison-mode/AnalysisReport'));
+const PortfolioDimensionComparison = lazy(() => import('../comparison-mode/PortfolioDimensionComparison'));
 
 const MIN_PANEL_HEIGHT = 120;
 const MAX_PANEL_HEIGHT = 500;
@@ -25,7 +28,6 @@ const DEFAULT_PANEL_HEIGHT = 192; // equivalent to h-48
 export default function MainContent() {
   const { ui, bottleSeries } = useStore();
   const activeSeries = useActiveSeries();
-  const activeComparison = useActiveSeriesComparison();
 
   // Resizable bottom panel state
   const [panelHeight, setPanelHeight] = useState(DEFAULT_PANEL_HEIGHT);
@@ -66,36 +68,35 @@ export default function MainContent() {
     };
   }, []);
 
-  // Resolve comparison series
-  const compSeries1 = activeComparison ? bottleSeries[activeComparison.series1Id] : null;
-  const compSeries2 = activeComparison ? bottleSeries[activeComparison.series2Id] : null;
+  // Portfolios picked in the Compare tab
+  const { portfolioA, portfolioB, units, view } = useCompareSelection();
+  const compSeries1 = bottleSeries[portfolioA] ?? null;
+  const compSeries2 = bottleSeries[portfolioB] ?? null;
+  const coverage = useMemo(
+    () => (compSeries1 && compSeries2 ? ComparisonService.compareSeries(compSeries1, compSeries2) : null),
+    [compSeries1, compSeries2]
+  );
 
-  const isComparisonView = ui.activeTab === 'comparison' && activeComparison && compSeries1 && compSeries2;
+  const isComparisonView = ui.activeTab === 'comparison' && !!compSeries1 && !!compSeries2;
   const isFillView = ui.activeTab === 'fill';
 
   return (
     <main className="flex-1 flex flex-col overflow-hidden bg-gray-100">
       {/* Main viewport */}
       <div className="flex-1 relative min-h-0">
-        {isComparisonView ? (
+        {isComparisonView && compSeries1 && compSeries2 ? (
           /* Comparison view replaces 3D viewport */
           <Suspense fallback={<LoadingSpinner />}>
             <div className="w-full h-full overflow-auto p-6 space-y-6">
-              <ComparisonChart
-                series1={compSeries1}
-                series2={compSeries2}
-                comparison={activeComparison}
-              />
-              <ComparisonTable
-                series1={compSeries1}
-                series2={compSeries2}
-                comparison={activeComparison}
-              />
-              <AnalysisReport
-                series1={compSeries1}
-                series2={compSeries2}
-                comparison={activeComparison}
-              />
+              {view === 'dimensions' || !coverage ? (
+                <PortfolioDimensionComparison portfolioA={compSeries1} portfolioB={compSeries2} units={units} />
+              ) : (
+                <>
+                  <ComparisonChart series1={compSeries1} series2={compSeries2} comparison={coverage} />
+                  <ComparisonTable series1={compSeries1} series2={compSeries2} comparison={coverage} />
+                  <AnalysisReport series1={compSeries1} series2={compSeries2} comparison={coverage} />
+                </>
+              )}
             </div>
           </Suspense>
         ) : isFillView ? (

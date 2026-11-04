@@ -1,90 +1,154 @@
 /**
  * Series Selector Component
- * Two dropdowns for selecting bottle series to compare.
+ * Two portfolio dropdowns for the side-by-side comparison.
  */
 
-import { useState } from 'react';
 import { useStore } from '@/store';
-import { GENERATION_ALGORITHM_NAMES } from '@/types/bottleSeries';
-import { GitCompare } from 'lucide-react';
+import { groupCaps } from '@/services/portfolioService';
+import { ArrowUpDown, GitCompare } from 'lucide-react';
+import { useCompareSelection } from './compareSelection';
 
 export default function SeriesSelector() {
-  const {
-    bottleSeries,
-    createSeriesComparison,
-  } = useStore();
+  const { bottleSeries } = useStore();
+  const { portfolioA, portfolioB, setPortfolioA, setPortfolioB, swap, units, setUnits, view, setView } =
+    useCompareSelection();
 
-  const [series1Id, setSeries1Id] = useState<string>('');
-  const [series2Id, setSeries2Id] = useState<string>('');
-
-  const seriesList = Object.values(bottleSeries);
-
-  const handleCompare = () => {
-    if (series1Id && series2Id && series1Id !== series2Id) {
-      createSeriesComparison(series1Id, series2Id);
-    }
+  const portfolios = Object.values(bottleSeries);
+  const label = (id: string) => {
+    const s = bottleSeries[id];
+    if (!s) return '';
+    const caps = groupCaps(s.bottles).length;
+    return `${s.bottles.length} bottles · ${caps} cap${caps === 1 ? '' : 's'}`;
   };
-
-  const canCompare = series1Id && series2Id && series1Id !== series2Id;
 
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
         <GitCompare className="w-4 h-4" />
-        Compare Series
+        Compare Portfolios
       </h3>
 
-      {seriesList.length < 2 ? (
+      {portfolios.length < 2 ? (
         <div className="text-sm text-gray-400 text-center py-4">
-          Generate at least 2 series to compare
+          Create at least 2 portfolios to compare
         </div>
       ) : (
         <>
-          {/* Series 1 */}
-          <div>
-            <label className="text-xs text-gray-600 font-medium">Series 1</label>
-            <select
-              value={series1Id}
-              onChange={(e) => setSeries1Id(e.target.value)}
-              className="input text-sm"
+          <PortfolioPicker
+            title="Portfolio A"
+            accent="text-blue-600"
+            value={portfolioA}
+            other={portfolioB}
+            onChange={setPortfolioA}
+            portfolios={portfolios}
+            detail={label(portfolioA)}
+          />
+          <div className="flex justify-center">
+            <button
+              onClick={swap}
+              disabled={!portfolioA && !portfolioB}
+              className="text-xs text-gray-500 hover:text-gray-800 flex items-center gap-1 disabled:opacity-40"
             >
-              <option value="">Select series...</option>
-              {seriesList.map((series) => (
-                <option key={series.id} value={series.id} disabled={series.id === series2Id}>
-                  {series.name} ({series.bottles.length} bottles, {GENERATION_ALGORITHM_NAMES[series.config.algorithm]})
-                </option>
-              ))}
-            </select>
+              <ArrowUpDown className="w-3.5 h-3.5" />
+              Swap
+            </button>
           </div>
+          <PortfolioPicker
+            title="Portfolio B"
+            accent="text-emerald-600"
+            value={portfolioB}
+            other={portfolioA}
+            onChange={setPortfolioB}
+            portfolios={portfolios}
+            detail={label(portfolioB)}
+          />
 
-          {/* Series 2 */}
-          <div>
-            <label className="text-xs text-gray-600 font-medium">Series 2</label>
-            <select
-              value={series2Id}
-              onChange={(e) => setSeries2Id(e.target.value)}
-              className="input text-sm"
-            >
-              <option value="">Select series...</option>
-              {seriesList.map((series) => (
-                <option key={series.id} value={series.id} disabled={series.id === series1Id}>
-                  {series.name} ({series.bottles.length} bottles, {GENERATION_ALGORITHM_NAMES[series.config.algorithm]})
-                </option>
-              ))}
-            </select>
+          <div className="pt-2 border-t border-gray-200 space-y-3">
+            <Toggle
+              label="View"
+              value={view}
+              options={[
+                ['dimensions', 'Dimensions'],
+                ['coverage', 'Fill coverage'],
+              ]}
+              onChange={setView}
+            />
+            <Toggle
+              label="Units"
+              value={units}
+              options={[
+                ['mm', 'mm'],
+                ['in', 'inch'],
+              ]}
+              onChange={setUnits}
+            />
           </div>
-
-          {/* Compare button */}
-          <button
-            onClick={handleCompare}
-            disabled={!canCompare}
-            className="btn btn-primary w-full flex items-center justify-center gap-2"
-          >
-            <GitCompare className="w-4 h-4" />
-            Generate Comparison
-          </button>
         </>
       )}
+    </div>
+  );
+}
+
+function PortfolioPicker({
+  title,
+  accent,
+  value,
+  other,
+  onChange,
+  portfolios,
+  detail,
+}: {
+  title: string;
+  accent: string;
+  value: string;
+  other: string;
+  onChange: (id: string) => void;
+  portfolios: { id: string; name: string }[];
+  detail: string;
+}) {
+  return (
+    <div>
+      <label className={`text-xs font-semibold ${accent}`}>{title}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="input text-sm mt-1">
+        <option value="">Select portfolio...</option>
+        {portfolios.map((p) => (
+          <option key={p.id} value={p.id} disabled={p.id === other}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      {detail && <p className="text-xs text-gray-500 mt-1">{detail}</p>}
+    </div>
+  );
+}
+
+function Toggle<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: [T, string][];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-gray-600 font-medium">{label}</span>
+      <div className="flex bg-gray-100 rounded-lg p-0.5">
+        {options.map(([v, text]) => (
+          <button
+            key={v}
+            onClick={() => onChange(v)}
+            className={`px-3 py-1 text-xs font-medium rounded-md ${
+              value === v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
