@@ -71,7 +71,7 @@ export function generateBodyId(): string {
   return uuidv4();
 }
 
-export type ColliderPrimitiveType = 'cylinder' | 'capsule' | 'cuboid' | 'ball' | 'convex';
+export type ColliderPrimitiveType = 'cylinder' | 'capsule' | 'cuboid' | 'round-cuboid' | 'ball' | 'convex';
 
 export interface ColliderPart {
   type: ColliderPrimitiveType;
@@ -107,24 +107,13 @@ export function getProductColliderParams(product: Product): ProductColliderParam
         parts: [{ type: 'capsule', args: [(length - width) / 2, width / 2] }],
       };
     case 'oblong-tablet': {
-      // Stadium extrusion: central cuboid + end cylinders using length × width × height
-      const halfLen = Math.max((length - width) / 2, 0.1);
+      // One rounded box for the stadium tablet: a cuboid + two end cylinders
+      // made each pile step ~2.5x slower (Rapier cylinders use generic GJK).
       const halfH = height / 2;
       const halfW = width / 2;
+      const r = Math.min(halfH, halfW) * 0.7;
       return {
-        parts: [
-          { type: 'cuboid', args: [halfLen, halfH, halfW] },
-          {
-            type: 'cylinder',
-            args: [halfH, halfW],
-            position: [halfLen, 0, 0],
-          },
-          {
-            type: 'cylinder',
-            args: [halfH, halfW],
-            position: [-halfLen, 0, 0],
-          },
-        ],
+        parts: [{ type: 'round-cuboid', args: [length / 2 - r, halfH - r, halfW - r, r] }],
       };
     }
     case 'gummy':

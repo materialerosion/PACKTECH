@@ -26,10 +26,22 @@ const SETTLE_MAX_DURATION = 2.0; // max seconds to wait for settle
 const SETTLE_MIN_DURATION = 0.5; // min settle time before velocity check
 const REST_SPEED = 80; // mm/s — treat stack as settled below this
 const PROGRESS_INTERVAL = 0.25; // seconds between inside-count UI updates while settling
-const MAX_SIM_TIME = 60; // max total simulation time
+const SIM_TIME_MARGIN = 45; // seconds allowed after dropping for settling and redrops
 const MAX_REDROP_PASSES = 2;
+// Pieces buried this many product lengths under the pile top, and quiet for
+// FREEZE_QUIET_TIME, become fixed: they no longer move, but every awake piece
+// in the pile costs solver time on every step.
+const FREEZE_DEPTH_FACTOR = 2;
+const FREEZE_QUIET_TIME = 1;
+const FREEZE_SPEED = 10; // mm/s
+const FREEZE_SPIN = 2; // rad/s
 
 type Phase = 'dropping' | 'settling' | 'redropping' | 'idle';
+
+// Rapier's RigidBodyType enum; the package is only reachable through @react-three/rapier.
+type BodyType = Parameters<RapierRigidBody['setBodyType']>[0];
+const DYNAMIC = 0 as BodyType;
+const FIXED = 1 as BodyType;
 
 function getProductId(body: RapierRigidBody): string | undefined {
   return (body.userData as { productId?: string } | undefined)?.productId;
@@ -54,6 +66,9 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
   const redropPassRef = useRef<number>(0);
   const redropQueueRef = useRef<RapierRigidBody[]>([]);
   const productBodiesRef = useRef<ProductBodyState[]>([]);
+  const quietTimeRef = useRef(new Map<number, number>());
+  const lastFrameTimeRef = useRef(0);
+  const dropEndTimeRef = useRef(0);
   
   const statusRef = useRef(fillSim.status);
   statusRef.current = fillSim.status;
@@ -69,6 +84,9 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
       redropPassRef.current = 0;
       redropQueueRef.current = [];
       productBodiesRef.current = [];
+      quietTimeRef.current.clear();
+      lastFrameTimeRef.current = 0;
+      dropEndTimeRef.current = 0;
     } else if (fillSim.status === 'configuring' || fillSim.status === 'idle') {
       phaseRef.current = 'idle';
       droppedCountRef.current = 0;
@@ -80,7 +98,6 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
   const forEachProduct = useCallback(
     (fn: (body: RapierRigidBody, id: string) => void) => {
       world.bodies.forEach((body) => {
-        if (!body.isDynamic()) return;
         const id = getProductId(body);
         if (id) fn(body, id);
       });
@@ -144,6 +161,37 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
     return maxSpeed < REST_SPEED;
   }, [forEachProduct]);
   
+  const freezeBuriedBodies = useCallback((dt: number) => {
+    if (!fillSim.fillProduct || dt <= 0) return;
+    const quiet = quietTimeRef.current;
+    const candidates: { body: RapierRigidBody; y: number }[] = [];
+    let pileTop = -Infinity;
+    forEachProduct((body) => {
+      if (!body.isDynamic()) return;
+      const v = body.linvel();
+      const w = body.angvel();
+      const still =
+        v.x * v.x + v.y * v.y + v.z * v.z < FREEZE_SPEED * FREEZE_SPEED &&
+        w.x * w.x + w.y * w.y + w.z * w.z < FREEZE_SPIN * FREEZE_SPIN;
+      if (!still) {
+        quiet.delete(body.handle);
+        return;
+      }
+      const t = (quiet.get(body.handle) ?? 0) + dt;
+      quiet.set(body.handle, t);
+      const y = body.translation().y;
+      pileTop = Math.max(pileTop, y);
+      if (t >= FREEZE_QUIET_TIME) candidates.push({ body, y });
+    });
+    const freezeBelow = pileTop - getProductMaxDimension(fillSim.fillProduct) * FREEZE_DEPTH_FACTOR;
+    for (const { body, y } of candidates) {
+      if (y < freezeBelow) {
+        body.setBodyType(FIXED, false);
+        quiet.delete(body.handle);
+      }
+    }
+  }, [fillSim.fillProduct, forEachProduct]);
+  
   const isSettleComplete = useCallback((settleElapsed: number): boolean => {
     if (settleElapsed >= SETTLE_MAX_DURATION) return true;
     return settleElapsed >= SETTLE_MIN_DURATION && areBodiesSettled();
@@ -184,6 +232,8 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
     const position = getClearSpawnPosition();
     if (!position) return;
     const rot = getRandomRotation();
+    body.setBodyType(DYNAMIC, true);
+    quietTimeRef.current.delete(body.handle);
     body.setTranslation({ x: position[0], y: position[1], z: position[2] }, true);
     body.setRotation({ x: rot[0], y: rot[1], z: rot[2], w: rot[3] }, true);
     body.setLinvel({ x: 0, y: 0, z: 0 }, true);
@@ -229,8 +279,16 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
     
     const now = physicsTimeRef.current - startTimeRef.current;
     const elapsed = now;
+    freezeBuriedBodies(now - lastFrameTimeRef.current);
+    lastFrameTimeRef.current = now;
     
-    if (elapsed > MAX_SIM_TIME) {
+    // At high sim speed only one piece drops per frame, so dropping can take
+    // several times targetQuantity × DROP_INTERVAL of simulated time.
+    const timeLimit =
+      phaseRef.current === 'dropping'
+        ? fillSim.targetQuantity * DROP_INTERVAL * 4 + SIM_TIME_MARGIN
+        : dropEndTimeRef.current + SIM_TIME_MARGIN;
+    if (elapsed > timeLimit) {
       finishSimulation(elapsed);
       return;
     }
@@ -251,6 +309,7 @@ export default function SimulationController({ physicsTimeRef }: SimulationContr
         }
         
         if (droppedCountRef.current >= fillSim.targetQuantity) {
+          dropEndTimeRef.current = now;
           startSettling(now);
           updateFillSimProgress({ status: 'settling', elapsedTime: elapsed });
         }

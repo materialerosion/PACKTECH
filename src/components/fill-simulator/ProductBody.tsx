@@ -8,6 +8,7 @@ import { memo, useMemo, useState } from 'react';
 import {
   RigidBody,
   CuboidCollider,
+  RoundCuboidCollider,
   CylinderCollider,
   CapsuleCollider,
   BallCollider,
@@ -78,6 +79,14 @@ function renderColliderPart(part: ColliderPart, key: string) {
           args={[part.args[0], part.args[1], part.args[2]]}
         />
       );
+    case 'round-cuboid':
+      return (
+        <RoundCuboidCollider
+          key={key}
+          {...common}
+          args={[part.args[0], part.args[1], part.args[2], part.args[3]]}
+        />
+      );
     case 'ball':
       return (
         <BallCollider
@@ -126,7 +135,6 @@ function ProductBody({
       linearDamping={0.4}
       angularDamping={0.4}
       ccd={true}
-      softCcdPrediction={2}
       userData={userData}
     >
       {colliderParams.parts.map((part, i) => renderColliderPart(part, `${id}-col-${i}`))}

@@ -5,7 +5,7 @@
  * Supports circular and oval (elliptical) body cross-sections.
  */
 
-import { Bottle, BottleDimensions, BottleShape, DrawingProfile } from '@/types/bottle';
+import { Bottle, BottleDimensions, BottleShape, DrawingProfile, ProfilePoint } from '@/types/bottle';
 import { sectionPoint } from './drawingProfile';
 
 export interface ColliderGeometry {
@@ -350,10 +350,26 @@ export function buildBottleCollisionShell(
  * the bore, plus the top rim. The floor is left to a box collider at
  * `profile.inner[0][1]`.
  */
+/**
+ * Inner wall from where it rises through the floor-box top (`inner[0][1]`).
+ * Push-up and heel geometry under that top is buried in the floor box, but its
+ * small triangles still sit within contact range of every resting piece and
+ * roughly doubled the cost of each physics step.
+ */
+function wallAboveFloor(inner: ProfilePoint[]): ProfilePoint[] {
+  const floorY = inner[0][1];
+  const k = inner.findIndex(([, y], i) => i > 0 && y >= floorY && inner[i - 1][1] < floorY);
+  if (k < 0) return inner.filter(([r]) => r > 0.01);
+  const [r0, y0] = inner[k - 1];
+  const [r1, y1] = inner[k];
+  const startR = r0 + ((r1 - r0) * (floorY - y0)) / (y1 - y0);
+  return [[startR, floorY], ...inner.slice(k)];
+}
+
 export function buildProfileCollisionShell(profile: DrawingProfile): ColliderGeometry {
   const vertices: number[] = [];
   const indices: number[] = [];
-  const wall = profile.inner.filter(([r]) => r > 0.01);
+  const wall = wallAboveFloor(profile.inner);
   const t = profile.wallThickness;
 
   const [firstR, firstY] = wall[0];

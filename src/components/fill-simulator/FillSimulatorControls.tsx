@@ -7,6 +7,7 @@ import { useStore, useFillSimulation } from '@/store';
 import { Play, RotateCcw, Pause, ClipboardCheck, AlertCircle } from 'lucide-react';
 import ProductPresetSelector from './ProductPresetSelector';
 import FillResultsPanel from './FillResultsPanel';
+import { SIM_SPEEDS, useSimSpeed } from './simSpeed';
 
 export default function FillSimulatorControls() {
   const {
@@ -20,6 +21,7 @@ export default function FillSimulatorControls() {
     setActiveSeries,
   } = useStore();
   
+  const { speed, setSpeed } = useSimSpeed();
   const fillSim = useFillSimulation();
   const { fillBottle, fillProduct, targetQuantity, status, droppedCount, insideCount, elapsedTime, currentPass } = fillSim;
   const portfolioId = activeSeriesId ?? fillSim.sourceSeriesId ?? '';
@@ -117,6 +119,24 @@ export default function FillSimulatorControls() {
           className="input text-sm w-full mt-1"
           disabled={isRunning}
         />
+      </div>
+      
+      {/* Simulation speed */}
+      <div>
+        <label className="text-xs text-gray-600 font-medium">Simulation Speed</label>
+        <div className="flex rounded-md border border-gray-200 overflow-hidden mt-1">
+          {SIM_SPEEDS.map((s) => (
+            <button
+              key={s}
+              onClick={() => setSpeed(s)}
+              className={`flex-1 px-2 py-1 text-xs ${
+                speed === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {s === SIM_SPEEDS[SIM_SPEEDS.length - 1] ? 'Max' : `${s}×`}
+            </button>
+          ))}
+        </div>
       </div>
       
       {/* Control buttons */}

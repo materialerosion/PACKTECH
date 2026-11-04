@@ -12,6 +12,7 @@ import { useStore, useFillSimulation } from '@/store';
 import BottleCollider from './BottleCollider';
 import ProductBody from './ProductBody';
 import SimulationController from './SimulationController';
+import { useSimSpeed } from './simSpeed';
 import { Droplets } from 'lucide-react';
 import * as THREE from 'three';
 import { Bottle } from '@/types/bottle';
@@ -20,6 +21,9 @@ import { radiusAt, sectionPoint } from '@/services/drawingProfile';
 const PHYSICS_TIME_STEP = 1 / 60;
 const MAX_PHYSICS_FRAME_DELTA = 1 / 30;
 const PHYSICS_FRAME_BUDGET_MS = 10;
+const FAST_PHYSICS_FRAME_BUDGET_MS = 14;
+/** Fraction of the product's thinnest dimension a body may travel per step before CCD is needed. */
+const CCD_TRAVEL_FRACTION = 0.25;
 
 /**
  * Drives the (paused) physics world in fixed steps within a per-frame time
@@ -27,17 +31,32 @@ const PHYSICS_FRAME_BUDGET_MS = 10;
  * into ~1 fps once a step costs more than the time it simulates; here a heavy
  * pile plays in slow motion instead. Advances timeRef by simulated seconds.
  */
-function BudgetedPhysicsStepper({ timeRef }: { timeRef: MutableRefObject<number> }) {
-  const { step } = useRapier();
+function BudgetedPhysicsStepper({
+  timeRef,
+  ccdSpeed,
+}: {
+  timeRef: MutableRefObject<number>;
+  /** mm/s above which a dynamic body gets CCD; on a resting pile CCD costs much and prevents nothing. */
+  ccdSpeed: number;
+}) {
+  const { step, world } = useRapier();
   const accumulator = useRef(0);
   useFrame((_, delta) => {
-    accumulator.current += Math.min(delta, MAX_PHYSICS_FRAME_DELTA);
+    const speed = useSimSpeed.getState().speed;
+    const budget = speed > 1 ? FAST_PHYSICS_FRAME_BUDGET_MS : PHYSICS_FRAME_BUDGET_MS;
+    accumulator.current += Math.min(delta, MAX_PHYSICS_FRAME_DELTA) * speed;
     const start = performance.now();
     while (accumulator.current >= PHYSICS_TIME_STEP) {
+      world.bodies.forEach((body) => {
+        if (!body.isDynamic()) return;
+        const v = body.linvel();
+        const fast = v.x * v.x + v.y * v.y + v.z * v.z > ccdSpeed * ccdSpeed;
+        if (body.isCcdEnabled() !== fast) body.enableCcd(fast);
+      });
       step(PHYSICS_TIME_STEP);
       accumulator.current -= PHYSICS_TIME_STEP;
       timeRef.current += PHYSICS_TIME_STEP;
-      if (performance.now() - start > PHYSICS_FRAME_BUDGET_MS) {
+      if (performance.now() - start > budget) {
         accumulator.current = 0;
         break;
       }
@@ -80,6 +99,11 @@ export default function FillScene3D() {
   const fillSim = useFillSimulation();
   const { fillBottle, fillProduct, status, productBodies } = fillSim;
   const physicsTimeRef = useRef(0);
+  const ccdSpeed = fillProduct
+    ? (Math.min(fillProduct.dimensions.length, fillProduct.dimensions.width, fillProduct.dimensions.height) *
+        CCD_TRAVEL_FRACTION) /
+      PHYSICS_TIME_STEP
+    : 0;
   
   const isComplete = status === 'complete';
   
@@ -178,7 +202,7 @@ export default function FillScene3D() {
             lengthUnit={1000}
             maxCcdSubsteps={4}
           >
-            <BudgetedPhysicsStepper timeRef={physicsTimeRef} />
+            <BudgetedPhysicsStepper timeRef={physicsTimeRef} ccdSpeed={ccdSpeed} />
             
             {/* Static bottle collider */}
             <BottleCollider bottle={fillBottle} />
