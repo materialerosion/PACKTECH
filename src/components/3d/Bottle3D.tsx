@@ -3,11 +3,11 @@
  * Renders a 3D bottle mesh based on bottle parameters
  */
 
-import { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { Bottle, ClosureDrawing, CollarDrawing, DrawingProfile } from '@/types';
+import { Bottle, ClosureDrawing, CollarDrawing, DrawingProfile, LabelArtwork } from '@/types';
 import { useStore } from '@/store';
 import { profileTop, sectionPoint } from '@/services/drawingProfile';
 import {
@@ -15,6 +15,7 @@ import {
   createCollarGeometries,
   createClosureTopTexture,
   createFlipTopGeometries,
+  createLabelGeometry,
   createProfileBodyGeometry,
   createThreadGeometry,
 } from './drawingGeometry';
@@ -102,6 +103,7 @@ export default function Bottle3D({
           profile={bottle.profile}
           closure={bottle.closure}
           collar={bottle.collar}
+          label={bottle.label}
           bodyColor={bottle.bodyColor}
           capColor={bottle.capColor}
           opacity={opacity}
@@ -234,10 +236,11 @@ export default function Bottle3D({
  * Bottle traced from a drawing: revolved shell, helical thread, label panel
  * edges, and the drawn closure seated on the finish.
  */
-function DrawingBottle({
+export function DrawingBottle({
   profile,
   closure,
   collar,
+  label,
   bodyColor,
   capColor,
   opacity,
@@ -246,6 +249,7 @@ function DrawingBottle({
   profile: DrawingProfile;
   closure?: ClosureDrawing;
   collar?: CollarDrawing;
+  label?: LabelArtwork;
   bodyColor: string;
   capColor: string;
   opacity: number;
@@ -273,7 +277,7 @@ function DrawingBottle({
   );
 
   const labelEdges = useMemo(() => {
-    if (!profile.labelPanel) return [];
+    if (!profile.labelPanel || label) return [];
     const r = profile.outer.reduce((m, [pr]) => Math.max(m, pr), 0) + 0.15;
     const { bottomY, height } = profile.labelPanel;
     return [bottomY, bottomY + height].map((y) => {
@@ -284,12 +288,13 @@ function DrawingBottle({
       }
       return new THREE.BufferGeometry().setFromPoints(pts);
     });
-  }, [profile]);
+  }, [profile, label]);
 
   return (
     <group>
       <mesh geometry={body} material={material} castShadow={!dimmed} receiveShadow />
       {thread && <mesh geometry={thread} material={material} castShadow={!dimmed} />}
+      {label && !profile.oval && <LabelModel profile={profile} label={label} opacity={opacity} dimmed={dimmed} />}
       {!dimmed && labelEdges.map((geo, i) => (
         <lineLoop key={i} geometry={geo}>
           <lineBasicMaterial color="#94a3b8" transparent opacity={0.55} />
@@ -307,6 +312,65 @@ function DrawingBottle({
       )}
     </group>
   );
+}
+
+/** Printed wrap label on the bottle wall. */
+function LabelModel({
+  profile,
+  label,
+  opacity,
+  dimmed,
+}: {
+  profile: DrawingProfile;
+  label: LabelArtwork;
+  opacity: number;
+  dimmed: boolean;
+}) {
+  const geometry = useMemo(() => createLabelGeometry(profile, label), [profile, label]);
+  const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy());
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    let current: THREE.Texture | null = null;
+    let cancelled = false;
+    new THREE.TextureLoader().load(label.imageUrl, (t) => {
+      if (cancelled) {
+        t.dispose();
+        return;
+      }
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = maxAnisotropy;
+      current = t;
+      setTexture(t);
+    });
+    return () => {
+      cancelled = true;
+      current?.dispose();
+    };
+  }, [label.imageUrl, maxAnisotropy]);
+
+  const gloss = label.finish !== 'matte';
+  const material = useMemo(
+    () =>
+      new THREE.MeshPhysicalMaterial({
+        map: texture,
+        // Rounded die-cut corners come through as transparent pixels
+        alphaTest: 0.5,
+        roughness: gloss ? 0.4 : 0.7,
+        clearcoat: gloss ? 0.45 : 0,
+        clearcoatRoughness: 0.22,
+        metalness: 0,
+        transparent: dimmed,
+        opacity: dimmed ? opacity : 1,
+        depthWrite: !dimmed,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+      }),
+    [texture, gloss, dimmed, opacity]
+  );
+
+  if (!texture) return null;
+  return <mesh geometry={geometry} material={material} castShadow={!dimmed} receiveShadow />;
 }
 
 /** Collar from a drawing, with y = 0 at its base. */

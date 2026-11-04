@@ -63,6 +63,21 @@ export interface LabelZone {
   color?: string;              // Preview color
 }
 
+/** Printed wrap label applied to the straight wall of a drawing bottle. */
+export interface LabelArtwork {
+  source: string;
+  /** Flat artwork image, left edge to right edge as printed. */
+  imageUrl: string;
+  width: number;               // mm, around the circumference
+  height: number;              // mm
+  /** Base of the bottle to the bottom label edge; defaults to centred on the label panel. */
+  bottomY?: number;
+  /** Fraction of the label width (0-1) that faces the front of the bottle. */
+  frontCenter?: number;
+  /** Face stock finish. */
+  finish?: 'gloss' | 'matte';
+}
+
 export interface Bottle {
   id: string;
   name: string;
@@ -84,6 +99,7 @@ export interface Bottle {
   closure?: ClosureDrawing;
   /** Second component snapped over the shoulder (2-piece bottles). */
   collar?: CollarDrawing;
+  label?: LabelArtwork;
 
   // Calculated values
   volume: number;              // ml (calculated)

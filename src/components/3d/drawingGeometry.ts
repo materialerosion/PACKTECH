@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ClosureDrawing, CollarDrawing, DrawingProfile } from '@/types';
+import { ClosureDrawing, CollarDrawing, DrawingProfile, LabelArtwork } from '@/types';
 import { sectionPoint } from '@/services/drawingProfile';
 
 const LATHE_SEGMENTS = 96;
@@ -32,6 +32,34 @@ export function createProfileBodyGeometry(profile: DrawingProfile): THREE.Buffer
     }
     geometry.computeVertexNormals();
   }
+  return geometry;
+}
+
+/** Label stock plus adhesive standing off the bottle wall (mm). */
+const LABEL_THICKNESS = 0.1;
+
+/** Base of the bottle to the bottom edge of the label. */
+export function labelBottomY(profile: DrawingProfile, label: LabelArtwork): number {
+  if (label.bottomY !== undefined) return label.bottomY;
+  const panel = profile.labelPanel;
+  return panel ? panel.bottomY + (panel.height - label.height) / 2 : 0;
+}
+
+/**
+ * Open cylinder band wrapped on the straight wall of a round bottle, with the
+ * artwork's `frontCenter` facing +z and u running left to right as printed.
+ */
+export function createLabelGeometry(profile: DrawingProfile, label: LabelArtwork): THREE.BufferGeometry {
+  const bottom = labelBottomY(profile, label);
+  const top = bottom + label.height;
+  const wall = profile.outer
+    .filter(([, y]) => y >= bottom && y <= top)
+    .reduce((m, [r]) => Math.max(m, r), 0);
+  const radius = (wall || profile.outer.reduce((m, [r]) => Math.max(m, r), 0)) + LABEL_THICKNESS;
+  const arc = Math.min(label.width / radius, Math.PI * 2);
+  const start = -arc * (label.frontCenter ?? 0.5);
+  const geometry = new THREE.CylinderGeometry(radius, radius, label.height, 192, 1, true, start, arc);
+  geometry.translate(0, bottom + label.height / 2, 0);
   return geometry;
 }
 
