@@ -13,9 +13,16 @@ import { ONE_A_DAY_MENS_100CT, ONE_A_DAY_PANELS } from '@/data/presets/labelArtw
 import { createLabelGeometry } from '@/components/3d/drawingGeometry';
 import { DrawingBottle } from '@/components/3d/Bottle3D';
 
-type Layout = 'hero' | 'panels';
+type Layout = 'hero' | 'panels' | 'amazon';
+
+const LAYOUT_NAMES: Record<Layout, string> = { panels: 'All panels', hero: 'Hero', amazon: 'Amazon main' };
 
 const BACKGROUND = '#e9edf2';
+/** Marketplace main images need a pure white (255, 255, 255) field. */
+const WHITE = '#ffffff';
+/** Square canvas edge in CSS px; times the pixel ratio gives the capture size. */
+const AMAZON_CANVAS = 1000;
+const AMAZON_DPR = 2.4;
 
 function useLabelledBottle(): Bottle | null {
   return useMemo(() => {
@@ -53,10 +60,12 @@ function RenderedBottle({ bottle, position, rotation }: { bottle: Bottle; positi
 }
 
 /** Large softboxes and a warm rim, baked into the environment map. */
-function StudioLights() {
+function StudioLights({ backlight = false }: { backlight?: boolean }) {
   return (
     <Environment resolution={512} background={false}>
       <color attach="background" args={['#1a1d22']} />
+      {/* Grazing edges reflect what is behind the bottle; light it so they read white */}
+      {backlight && <Lightformer form="rect" intensity={2.2} color="#ffffff" position={[0, 2, -6]} scale={[24, 14, 1]} />}
       <Lightformer form="rect" intensity={2.2} color="#ffffff" position={[-5, 2, 3]} rotation={[0, Math.PI / 3, 0]} scale={[5, 7, 1]} />
       <Lightformer form="rect" intensity={1.2} color="#ffffff" position={[5, 1.5, 3]} rotation={[0, -Math.PI / 3, 0]} scale={[4, 6, 1]} />
       <Lightformer form="rect" intensity={2} color="#ffffff" position={[0, 6, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[10, 10, 1]} />
@@ -76,18 +85,22 @@ export default function ProductRender() {
   }
 
   const top = 108;
+  const amazon = layout === 'amazon';
+  const background = amazon ? WHITE : BACKGROUND;
   const shots =
-    layout === 'hero'
-      ? [{ x: 0, z: 0, rotation: panelRotation(bottle, ONE_A_DAY_PANELS.brand) + 0.3 }]
-      : [
+    layout === 'panels'
+      ? [
           { x: -78, z: -12, rotation: panelRotation(bottle, ONE_A_DAY_PANELS.supplementFacts) },
           { x: 0, z: 10, rotation: panelRotation(bottle, ONE_A_DAY_PANELS.brand) },
           { x: 78, z: -12, rotation: panelRotation(bottle, ONE_A_DAY_PANELS.ingredients) },
-        ];
-  const camera =
-    layout === 'hero'
-      ? { position: [75, 95, 310] as [number, number, number], fov: 30 }
-      : { position: [0, 78, 370] as [number, number, number], fov: 30 };
+        ]
+      : [{ x: 0, z: 0, rotation: panelRotation(bottle, ONE_A_DAY_PANELS.brand) + 0.3 }];
+  // Amazon: long lens from just above the shoulder, so the label reads flat and undistorted
+  const camera = {
+    hero: { position: [75, 95, 310] as [number, number, number], fov: 30 },
+    panels: { position: [0, 78, 370] as [number, number, number], fov: 30 },
+    amazon: { position: [70, 150, 700] as [number, number, number], fov: 13 },
+  }[layout];
 
   const download = () => {
     const canvas = canvasRef.current;
@@ -99,22 +112,26 @@ export default function ProductRender() {
   };
 
   return (
-    <div className="h-screen w-screen relative" style={{ background: BACKGROUND }}>
+    <div
+      className={`h-screen w-screen relative ${amazon ? 'flex items-center justify-center' : ''}`}
+      style={{ background: amazon ? '#d1d5db' : background }}
+    >
+      <div style={amazon ? { width: AMAZON_CANVAS, height: AMAZON_CANVAS, flex: 'none' } : { width: '100%', height: '100%' }}>
       <Canvas
         key={layout}
         ref={canvasRef}
         shadows
-        dpr={[1, 2]}
+        dpr={amazon ? AMAZON_DPR : [1, 2]}
         camera={{ position: camera.position, fov: camera.fov, near: 1, far: 3000 }}
         gl={{ antialias: true, preserveDrawingBuffer: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
       >
-        <color attach="background" args={[BACKGROUND]} />
-        <StudioLights />
+        <color attach="background" args={[background]} />
+        <StudioLights backlight={amazon} />
         <ambientLight intensity={0.15} />
         <directionalLight
           position={[-120, 260, 180]}
           intensity={1.1}
-          castShadow
+          castShadow={!amazon}
           shadow-mapSize={[2048, 2048]}
           shadow-bias={-0.0004}
           shadow-camera-left={-200}
@@ -127,14 +144,21 @@ export default function ProductRender() {
           <RenderedBottle key={i} bottle={bottle} position={[s.x, 0, s.z]} rotation={s.rotation} />
         ))}
 
-        <ContactShadows position={[0, 0.01, 0]} scale={500} resolution={1024} blur={2.4} opacity={0.55} far={60} color="#2a3340" />
-        <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[4000, 4000]} />
-          <shadowMaterial opacity={0.12} />
-        </mesh>
+        {amazon ? (
+          <ContactShadows position={[0, 0.01, 0]} scale={220} resolution={2048} blur={2.2} opacity={0.6} far={30} color="#3b4250" />
+        ) : (
+          <>
+            <ContactShadows position={[0, 0.01, 0]} scale={500} resolution={1024} blur={2.4} opacity={0.55} far={60} color="#2a3340" />
+            <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+              <planeGeometry args={[4000, 4000]} />
+              <shadowMaterial opacity={0.12} />
+            </mesh>
+          </>
+        )}
 
-        <OrbitControls makeDefault target={[0, top * 0.48, 0]} minDistance={120} maxDistance={900} enablePan />
+        <OrbitControls makeDefault target={[0, top * 0.48, 0]} minDistance={120} maxDistance={1200} enablePan />
       </Canvas>
+      </div>
 
       <div className="absolute top-4 left-4 bg-white/85 backdrop-blur rounded-lg shadow px-4 py-3 text-xs text-gray-700 space-y-1 max-w-xs">
         <div className="font-semibold text-sm text-gray-900">ONE A DAY Men's Multi, 100 ct</div>
@@ -144,7 +168,7 @@ export default function ProductRender() {
       </div>
 
       <div className="absolute top-4 right-4 flex gap-2">
-        {(['panels', 'hero'] as Layout[]).map((l) => (
+        {(Object.keys(LAYOUT_NAMES) as Layout[]).map((l) => (
           <button
             key={l}
             onClick={() => setLayout(l)}
@@ -152,7 +176,7 @@ export default function ProductRender() {
               layout === l ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
-            {l === 'panels' ? 'All panels' : 'Hero'}
+            {LAYOUT_NAMES[l]}
           </button>
         ))}
         <button onClick={download} className="px-3 py-1.5 rounded-md text-xs font-medium shadow bg-gray-900 text-white hover:bg-gray-800">
