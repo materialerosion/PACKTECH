@@ -1,6 +1,6 @@
 /**
  * Zustand Store
- * Central state management for the PACK2 application
+ * Central state management for the PACKTECH application
  */
 
 import { create } from 'zustand';
