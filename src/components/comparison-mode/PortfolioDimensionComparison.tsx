@@ -4,12 +4,16 @@
  * and per-bottle key measurements with rows aligned across both portfolios.
  */
 
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { Bottle } from '@/types';
 import { BottleSeries } from '@/types/bottleSeries';
-import { INCH, profileTop } from '@/services/drawingProfile';
+import { Product } from '@/types/product';
+import { useStore, HeadspaceAssessment } from '@/store';
+import { PRODUCT_PRESETS } from '@/data/presets/products';
+import { INCH, profileTop, radiusAt } from '@/services/drawingProfile';
 import { closureLabel } from '@/services/portfolioService';
-import { CompareUnits } from './compareSelection';
+import { DEFAULT_PACKING_FRACTION, HeadspaceResult, estimateHeadspace } from '@/services/headspaceService';
+import { CompareUnits, useCompareSelection } from './compareSelection';
 
 interface Props {
   /** One or two sides, each a portfolio narrowed to the picked bottles. */
@@ -45,9 +49,43 @@ interface Measures {
   closureDiameter?: number;
   closureHeight?: number;
   collar?: number;
+  fill?: BottleFill;
 }
 
-function measure(b: Bottle): Measures {
+interface BottleFill {
+  hs: HeadspaceResult;
+  simulated: boolean;
+  overflow: boolean;
+}
+
+interface FillContext {
+  product: Product;
+  count: number;
+  packing: number;
+  assessments: HeadspaceAssessment[];
+}
+
+/** Saved simulator run for this bottle, product and count if there is one, else a volume estimate. */
+function fillFor(b: Bottle, ctx: FillContext): BottleFill {
+  const run = ctx.assessments
+    .filter((a) => a.bottleId === b.id && a.productName === ctx.product.name && a.targetQuantity === ctx.count)
+    .sort((x, y) => y.date.localeCompare(x.date))[0];
+  if (run) return { hs: run.headspace, simulated: true, overflow: run.actualQuantity < run.targetQuantity };
+  const { overflow, ...hs } = estimateHeadspace(b, ctx.product, ctx.count, ctx.packing);
+  return { hs, simulated: false, overflow };
+}
+
+/** Median solid ÷ bulk volume of saved runs of `product` that didn't overflow. */
+function packingFraction(product: Product, assessments: HeadspaceAssessment[]): { value: number; runs: number } {
+  const values = assessments
+    .filter((a) => a.productName === product.name && a.actualQuantity === a.targetQuantity && a.headspace.bulkVolumeMl > 0)
+    .map((a) => a.headspace.solidVolumeMl / a.headspace.bulkVolumeMl)
+    .sort((x, y) => x - y);
+  if (!values.length) return { value: DEFAULT_PACKING_FRACTION, runs: 0 };
+  return { value: values[Math.floor(values.length / 2)], runs: values.length };
+}
+
+function measure(b: Bottle, fill: FillContext | null): Measures {
   const p = b.profile;
   const height = p ? profileTop(p) : b.dimensions.bodyHeight;
   const width = b.dimensions.diameter;
@@ -74,12 +112,14 @@ function measure(b: Bottle): Measures {
     closureDiameter: c?.bottomDiameter,
     closureHeight: c?.height,
     collar: b.collar ? b.collar.height + b.collar.tabHeight : undefined,
+    fill: fill ? fillFor(b, fill) : undefined,
   };
 }
 
-type Row =
+type Row = (
   | { group: string }
-  | { label: string; unit?: string; value: (m: Measures, u: CompareUnits) => string; numeric?: (m: Measures) => number | undefined; kind?: 'length' | 'area' };
+  | { label: string; unit?: string; value: (m: Measures, u: CompareUnits) => string; numeric?: (m: Measures) => number | undefined; kind?: 'length' | 'area' }
+) & { fillOnly?: boolean };
 
 const len = (mm: number | undefined, u: CompareUnits) =>
   mm === undefined ? '—' : u === 'mm' ? mm.toFixed(1) : (mm / INCH).toFixed(3);
@@ -115,6 +155,40 @@ const ROWS: Row[] = [
   { label: 'Closure diameter', kind: 'length', value: (m, u) => len(m.closureDiameter, u), numeric: (m) => m.closureDiameter },
   { label: 'Closure height', kind: 'length', value: (m, u) => len(m.closureHeight, u), numeric: (m) => m.closureHeight },
   { label: 'Collar height', kind: 'length', value: (m, u) => len(m.collar, u), numeric: (m) => m.collar },
+  { group: 'Fill', fillOnly: true },
+  {
+    label: 'Fill height',
+    kind: 'length',
+    fillOnly: true,
+    value: (m, u) => (m.fill ? `${len(m.fill.hs.fillHeightMm, u)}${m.fill.overflow ? ' ⚠' : ''}` : '—'),
+    numeric: (m) => m.fill?.hs.fillHeightMm,
+  },
+  {
+    label: 'Headspace (bulk)',
+    unit: '%',
+    fillOnly: true,
+    value: (m) => (m.fill ? m.fill.hs.bulkHeadspacePct.toFixed(0) : '—'),
+    numeric: (m) => m.fill?.hs.bulkHeadspacePct,
+  },
+  {
+    label: 'Fill to shoulder',
+    kind: 'length',
+    fillOnly: true,
+    value: (m, u) => len(m.fill?.hs.shoulderClearanceMm ?? undefined, u),
+    numeric: (m) => m.fill?.hs.shoulderClearanceMm ?? undefined,
+  },
+  {
+    label: 'Fill to neck',
+    kind: 'length',
+    fillOnly: true,
+    value: (m, u) => len(m.fill?.hs.neckClearanceMm, u),
+    numeric: (m) => m.fill?.hs.neckClearanceMm,
+  },
+  {
+    label: 'Fill source',
+    fillOnly: true,
+    value: (m) => (!m.fill ? '—' : m.fill.overflow ? 'Overflows' : m.fill.simulated ? 'Simulated' : 'Estimated'),
+  },
 ];
 
 const unitOf = (row: Extract<Row, { label: string }>, u: CompareUnits) =>
@@ -133,13 +207,28 @@ function range(values: (number | undefined)[]): [number, number] | null {
 }
 
 export default function PortfolioDimensionComparison({ sides: picked, sideIndex, units }: Props) {
+  const { fillProductId, fillCount } = useCompareSelection();
+  const assessments = useStore((s) => s.assessments);
+  const fill = useMemo<(FillContext & { packingRuns: number }) | null>(() => {
+    const product = PRODUCT_PRESETS.find((p) => p.id === fillProductId);
+    if (!product) return null;
+    const packing = packingFraction(product, assessments);
+    return { product, count: fillCount, packing: packing.value, packingRuns: packing.runs, assessments };
+  }, [fillProductId, fillCount, assessments]);
+  const rows = fill ? ROWS : ROWS.filter((r) => !r.fillOnly);
+
   const sides = useMemo(
     () =>
       picked.map((s, i) => {
         const bottles = [...s.bottles].sort((a, b) => a.volume - b.volume);
-        return { series: s, style: SIDE_STYLE[sideIndex[i] ?? i], bottles, measures: bottles.map(measure) };
+        return {
+          series: s,
+          style: SIDE_STYLE[sideIndex[i] ?? i],
+          bottles,
+          measures: bottles.map((b) => measure(b, fill)),
+        };
       }),
-    [picked, sideIndex]
+    [picked, sideIndex, fill]
   );
   const columns = sides.length > 1 ? 'grid-cols-2' : 'grid-cols-1';
   const headToHead = sides.length === 2 && sides.every((s) => s.bottles.length === 1);
@@ -150,6 +239,22 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
 
   return (
     <div className="space-y-6">
+      {fill && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          <span className="font-semibold">
+            Fill line: {fill.count} × {fill.product.name}
+          </span>
+          <span>
+            Simulated where a saved headspace assessment matches the bottle, product and count; otherwise estimated
+            from bottle volume at a packing fraction of {fill.packing.toFixed(2)}
+            {fill.packingRuns
+              ? ` (median of ${fill.packingRuns} saved ${fill.product.name} run${fill.packingRuns === 1 ? '' : 's'})`
+              : ' (default; save assessments of this product to calibrate)'}
+            .
+          </span>
+        </div>
+      )}
+
       {/* Silhouettes */}
       <div className={`grid ${columns} gap-4`}>
         {sides.map((side, i) => (
@@ -159,11 +264,18 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
               <div className="flex items-end gap-4 min-w-max">
                 {side.bottles.map((b, k) => (
                   <div key={b.id} className="flex flex-col items-center">
-                    <Silhouette bottle={b} pxPerMm={pxPerMm} tallest={tallest} accent={side.style.stroke} />
+                    <Silhouette
+                      bottle={b}
+                      pxPerMm={pxPerMm}
+                      tallest={tallest}
+                      accent={side.style.stroke}
+                      fill={side.measures[k].fill}
+                    />
                     <div className="mt-2 text-xs font-semibold text-gray-800 whitespace-nowrap">{b.name}</div>
                     <div className="text-[11px] text-gray-500 font-mono whitespace-nowrap">
                       {len(side.measures[k].heightWithClosure, units)} × {len(side.measures[k].width, units)} {units}
                     </div>
+                    {side.measures[k].fill && <FillCaption fill={side.measures[k].fill!} units={units} />}
                   </div>
                 ))}
               </div>
@@ -197,7 +309,7 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {ROWS.map((row, r) => {
+            {rows.map((row, r) => {
               if ('group' in row || !row.numeric) return null;
               const cells = sides.map((s) => range(s.measures.map(row.numeric!)));
               const fmt = (v: number) =>
@@ -244,7 +356,7 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
                   </tr>
                 </thead>
                 <tbody>
-                  {ROWS.map((row, r) =>
+                  {rows.map((row, r) =>
                     'group' in row ? (
                       <tr key={r} className="bg-gray-50/70">
                         <td
@@ -296,8 +408,36 @@ function SideHeader({ style, series }: { style: (typeof SIDE_STYLE)[number]; ser
   );
 }
 
-/** Front-view outline: body from the drawing profile, plus collar and closure. */
-function Silhouette({ bottle, pxPerMm, tallest, accent }: { bottle: Bottle; pxPerMm: number; tallest: number; accent: string }) {
+const FILL_COLOR = '#f59e0b';
+const FILL_LINE = '#b45309';
+const OVERFLOW_LINE = '#dc2626';
+
+function FillCaption({ fill, units }: { fill: BottleFill; units: CompareUnits }) {
+  return (
+    <div className={`text-[11px] font-mono whitespace-nowrap ${fill.overflow ? 'text-red-600' : 'text-amber-700'}`}>
+      {fill.overflow
+        ? 'Overflows'
+        : `Fill ${len(fill.hs.fillHeightMm, units)} ${units} · ${fill.hs.bulkHeadspacePct.toFixed(0)}% HS`}
+      <span className="text-gray-400"> {fill.simulated ? 'sim' : 'est'}</span>
+    </div>
+  );
+}
+
+/** Front-view outline: body from the drawing profile, plus collar, closure and settled fill. */
+function Silhouette({
+  bottle,
+  pxPerMm,
+  tallest,
+  accent,
+  fill,
+}: {
+  bottle: Bottle;
+  pxPerMm: number;
+  tallest: number;
+  accent: string;
+  fill?: BottleFill;
+}) {
+  const clipId = useId();
   const p = bottle.profile;
   const top = p ? profileTop(p) : bottle.dimensions.bodyHeight;
   const c = bottle.closure;
@@ -328,9 +468,44 @@ function Silhouette({ bottle, pxPerMm, tallest, accent }: { bottle: Bottle; pxPe
   const trapezoid = (bottomHalf: number, topHalf: number, y0: number, y1: number) =>
     `M${x(-bottomHalf)},${y(y0)} L${x(bottomHalf)},${y(y0)} L${x(topHalf)},${y(y1)} L${x(-topHalf)},${y(y1)} Z`;
 
+  const cavity = p
+    ? (() => {
+        const right = p.inner.map(([r, v]) => `${x(r)},${y(v)}`);
+        const left = [...p.inner].reverse().map(([r, v]) => `${x(-r)},${y(v)}`);
+        return `M${right.join(' L')} L${left.join(' L')} Z`;
+      })()
+    : (() => {
+        const r = bottle.dimensions.diameter / 2 - (bottle.dimensions.wallThickness ?? 1);
+        const floor = bottle.dimensions.wallThickness ?? 1;
+        return trapezoid(r, r, floor, top - bottle.dimensions.neckHeight);
+      })();
+  const fillY = fill ? Math.min(fill.hs.fillHeightMm, top) : 0;
+  const lineHalf = fill
+    ? p
+      ? radiusAt(p.inner, fillY)
+      : bottle.dimensions.diameter / 2 - (bottle.dimensions.wallThickness ?? 1)
+    : 0;
+
   return (
     <svg width={w * pxPerMm} height={h * pxPerMm} viewBox={`0 0 ${w} ${h}`} className="block">
       <path d={body} fill={`${accent}22`} stroke={accent} strokeWidth={0.5} strokeLinejoin="round" />
+      {fill && (
+        <>
+          <clipPath id={clipId}>
+            <rect x={0} y={y(fillY)} width={w} height={h - y(fillY)} />
+          </clipPath>
+          <path d={cavity} fill={FILL_COLOR} fillOpacity={0.45} clipPath={`url(#${clipId})`} />
+          <line
+            x1={x(-lineHalf)}
+            x2={x(lineHalf)}
+            y1={y(fillY)}
+            y2={y(fillY)}
+            stroke={fill.overflow ? OVERFLOW_LINE : FILL_LINE}
+            strokeWidth={0.7}
+            strokeDasharray={fill.simulated ? undefined : '2 1.2'}
+          />
+        </>
+      )}
       {collar && (
         <path
           d={trapezoid(collar.baseWidth / 2, collar.topDiameter / 2, collar.seatY, collar.seatY + collar.height)}

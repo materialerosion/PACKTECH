@@ -116,11 +116,51 @@ export function computeHeadspace(
   product: Product,
   pieces: PieceState[]
 ): HeadspaceResult {
+  const inside = pieces.filter((p) => p.isInside).length;
+  return headspaceAtFillHeight(bottle, product, inside, settledFillHeight(pieces, product));
+}
+
+/** Packing fraction (solid ÷ bulk volume) of the 150 Womens Tablet runs in the 548 mL. */
+export const DEFAULT_PACKING_FRACTION = 0.59;
+
+/** Lowest height whose volume below holds `bulkMl` (mm); capped at the bottle top. */
+export function heightForVolume(bottle: Bottle, bulkMl: number): number {
+  let lo = 0;
+  let hi = bottle.dimensions.height;
+  if (volumeBelow(bottle, hi) <= bulkMl) return hi;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (volumeBelow(bottle, mid) < bulkMl) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+}
+
+/** Fill estimate without physics: `count` pieces settled at `packingFraction`. */
+export function estimateHeadspace(
+  bottle: Bottle,
+  product: Product,
+  count: number,
+  packingFraction = DEFAULT_PACKING_FRACTION
+): HeadspaceResult & { overflow: boolean } {
+  const bulkMl = (count * product.volume) / 1000 / packingFraction;
+  return {
+    ...headspaceAtFillHeight(bottle, product, count, heightForVolume(bottle, bulkMl)),
+    overflow: bulkMl > bottle.volume,
+  };
+}
+
+export function headspaceAtFillHeight(
+  bottle: Bottle,
+  product: Product,
+  insideCount: number,
+  settledHeightMm: number
+): HeadspaceResult {
   const capacityMl = bottle.volume;
   const overallHeightMm = bottle.dimensions.height;
-  const fillHeightMm = Math.min(settledFillHeight(pieces, product), overallHeightMm);
+  const fillHeightMm = Math.min(settledHeightMm, overallHeightMm);
   const bulkVolumeMl = Math.min(volumeBelow(bottle, fillHeightMm), capacityMl);
-  const solidVolumeMl = (pieces.filter((p) => p.isInside).length * product.volume) / 1000;
+  const solidVolumeMl = (insideCount * product.volume) / 1000;
   const shoulder = shoulderStart(bottle);
   const pct = (part: number) => (capacityMl > 0 ? (part / capacityMl) * 100 : 0);
 

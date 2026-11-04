@@ -6,6 +6,8 @@
 import { useStore } from '@/store';
 import { BottleSeries } from '@/types/bottleSeries';
 import { ArrowUpDown, GitCompare } from 'lucide-react';
+import { PRODUCT_SHAPE_NAMES } from '@/types/product';
+import { PRESET_GROUPS } from '@/components/fill-simulator/ProductPresetSelector';
 import { CompareSide, useCompareSelection } from './compareSelection';
 
 export default function SeriesSelector() {
@@ -36,6 +38,8 @@ export default function SeriesSelector() {
             </button>
           </div>
           <SidePicker side="B" title="Side B" accent="text-emerald-600" portfolios={portfolios} />
+
+          <FillPicker />
 
           <div className="pt-3 border-t border-gray-200 space-y-3">
             <Toggle
@@ -129,6 +133,45 @@ function SidePicker({
               </label>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Product and count drawn as a settled fill line in every silhouette. */
+function FillPicker() {
+  const { fillProductId, fillCount, setFillProduct, setFillCount } = useCompareSelection();
+  return (
+    <div className="pt-3 border-t border-gray-200 space-y-2">
+      <label className="text-xs font-semibold text-gray-700">Fill line</label>
+      <select
+        value={fillProductId ?? ''}
+        onChange={(e) => setFillProduct(e.target.value || null)}
+        className="input text-sm"
+      >
+        <option value="">No fill</option>
+        {PRESET_GROUPS.map(([group, presets]) => (
+          <optgroup key={group} label={group}>
+            {presets.map(({ preset }) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name} ({PRODUCT_SHAPE_NAMES[preset.shape]})
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      {fillProductId && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-gray-600 font-medium">Count per bottle</span>
+          <input
+            type="number"
+            min={1}
+            max={2000}
+            value={fillCount}
+            onChange={(e) => setFillCount(parseInt(e.target.value))}
+            className="input text-sm w-24 text-right"
+          />
         </div>
       )}
     </div>

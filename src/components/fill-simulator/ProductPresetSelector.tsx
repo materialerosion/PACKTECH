@@ -9,7 +9,7 @@ import { PRODUCT_PRESETS, createProduct, calculateProductVolume } from '@/data/p
 import { useStore, useFillSimulation } from '@/store';
 import { ChevronUp } from 'lucide-react';
 
-const PRESET_GROUPS: [string, { preset: Product; idx: number }[]][] = (() => {
+export const PRESET_GROUPS: [string, { preset: Product; idx: number }[]][] = (() => {
   const groups = new Map<string, { preset: Product; idx: number }[]>();
   PRODUCT_PRESETS.forEach((preset, idx) => {
     const group = preset.group ?? 'Generic';

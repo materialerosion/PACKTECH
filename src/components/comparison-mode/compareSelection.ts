@@ -20,11 +20,16 @@ interface CompareSelection {
   B: SidePick;
   units: CompareUnits;
   view: CompareView;
+  /** PRODUCT_PRESETS id drawn as a settled fill in every silhouette; null hides the fill. */
+  fillProductId: string | null;
+  fillCount: number;
   setPortfolio: (side: CompareSide, id: string) => void;
   setBottles: (side: CompareSide, ids: string[] | null) => void;
   swap: () => void;
   setUnits: (units: CompareUnits) => void;
   setView: (view: CompareView) => void;
+  setFillProduct: (id: string | null) => void;
+  setFillCount: (count: number) => void;
 }
 
 export const useCompareSelection = create<CompareSelection>()((set) => ({
@@ -32,9 +37,13 @@ export const useCompareSelection = create<CompareSelection>()((set) => ({
   B: { portfolioId: '', bottleIds: null },
   units: 'mm',
   view: 'dimensions',
+  fillProductId: null,
+  fillCount: 100,
   setPortfolio: (side, portfolioId) => set({ [side]: { portfolioId, bottleIds: null } }),
   setBottles: (side, bottleIds) => set((s) => ({ [side]: { ...s[side], bottleIds } })),
   swap: () => set((s) => ({ A: s.B, B: s.A })),
   setUnits: (units) => set({ units }),
   setView: (view) => set({ view }),
+  setFillProduct: (fillProductId) => set({ fillProductId }),
+  setFillCount: (count) => set({ fillCount: Math.max(1, Math.min(2000, Math.round(count) || 1)) }),
 }));
