@@ -8,6 +8,8 @@ import { useStore, useActiveSeries } from '@/store';
 import { buildMyerstownBottles } from '@/data/presets/myerstownStock';
 import { buildPainCardioBottles } from '@/data/presets/painCardio';
 import { buildWestMercuryBottles } from '@/data/presets/westMercury';
+import { buildAfrinBottle } from '@/data/presets/afrin';
+import { buildAsteproBottles } from '@/data/presets/astepro';
 import { closureLabel } from '@/services/portfolioService';
 import { FolderPlus, Plus, Trash2, Package } from 'lucide-react';
 
@@ -35,6 +37,8 @@ export default function PortfolioManager() {
     () => [
       ...buildPainCardioBottles().map((bottle) => ({ bottle, group: 'Pain & Cardio drawing' })),
       ...buildWestMercuryBottles().map((bottle) => ({ bottle, group: 'Iconic 2-piece drawing' })),
+      { bottle: buildAfrinBottle(), group: 'Nasal spray drawing' },
+      ...buildAsteproBottles().map((bottle) => ({ bottle, group: 'Astepro 2-piece drawing' })),
     ],
     []
   );
