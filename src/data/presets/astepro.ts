@@ -6,9 +6,15 @@
  * bottom; the app has no base-cup component, so it is not drawn and does not
  * change the capacity.
  *
- * Not on the drawings, and estimated here: the shoulder height, the base taper,
- * and the wall thickness. The resin weight follows from the estimated wall.
- * No pump or closure drawing was supplied, so the bottles have no cap.
+ * The assembled bottle (photo) has a straight body, a rounded shoulder and a
+ * rounded heel. The drawing's conical foot sits inside the base cup and is
+ * not the visible base, so it is not modelled. No pump or closure drawing was
+ * supplied, so the bottles have no cap.
+ *
+ * 15 mL: the Amcor spec sheet (ref. B-12267 / C-23300) gives weight 5.5–7.5 g,
+ * overflow 18.5 ± 0.75 mL, neck M18/SP415, bottle HDPE Marlex HHM 5502BN. The wall
+ * is solved from the 6.5 g midpoint, as the app does for other drawings.
+ * 34.5 mL: no spec sheet, so the wall is an estimate.
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -24,12 +30,6 @@ const BORE_D = 13.46; // "I" Ø13.46 (.530)
 const THREAD_PITCH = 25.4 / 8; // not dimensioned; 8 per inch assumed
 const THREAD_TURNS = 3;
 
-// Estimated, not on the drawings
-const SHOULDER_RISE = 10; // mm, body to neck
-const BASE_TAPER = 6; // mm, bottom taper up to the full body diameter
-const BASE_FLOOR_RATIO = 0.8; // floor radius as a share of the body radius
-const WALL = 1.0; // mm
-
 interface AsteproSpec {
   name: string;
   presetId: string;
@@ -38,35 +38,93 @@ interface AsteproSpec {
   bodyDiameter: number; // mm
   finishHeight: number; // "H", top of finish to the bottom of the thread zone
   threadEnd: number; // "S", top of finish to the start of the thread
+  /** Rise from the straight body to the neck (mm). */
+  shoulderRise: number;
+  /**
+   * `ellipse` is a quarter ellipse, used on the 15 mL.
+   * `rounded` keeps the wall straight, rounds the corner, then runs a short
+   * slope into the neck, matching the assembled bottle.
+   */
+  shoulder: 'ellipse' | 'rounded';
+  /** Outside radius of the heel, so the base stays full width and rounds in. */
+  heel: number;
+  /** Solve the wall so the resin weight matches this (g). */
+  weightG?: number;
+  /** Otherwise use this wall thickness (mm). */
+  wall?: number;
+  neckFinish: string;
 }
 
 const ASTEPRO_SPECS: AsteproSpec[] = [
   {
     name: '15 mL Astepro',
     presetId: 'astepro-15',
-    source: 'Astepro 15 mL bottle + base cup (drawing, bottle only)',
+    source:
+      'Astepro 15 mL bottle + base cup (drawing B-12267 / C-23300; Amcor spec: HDPE Marlex HHM 5502BN, M18/SP415, weight 5.5–7.5 g, overflow 18.5 ± 0.75 mL)',
     overall: 58.72, // 2.312 ±.060
     bodyDiameter: 28.58, // 1.125 ±.030
     finishHeight: 19.0, // .748 ±.015
     threadEnd: 0.99, // .039 ±.015
+    shoulderRise: 10,
+    shoulder: 'ellipse',
+    heel: 4,
+    weightG: 6.5,
+    neckFinish: 'M18/SP415',
   },
   {
     name: '34.5 mL Astepro',
     presetId: 'astepro-34.5',
-    source: 'Astepro 34.5 mL bottle + base cup (drawing, bottle only)',
+    source: 'Astepro 34.5 mL bottle + base cup (drawing, bottle only; wall estimated)',
     overall: 55.63, // 2.190 ±.050
     bodyDiameter: 38.05, // 1.498 ±.031
     finishHeight: 15.66, // .617 ±.015
     threadEnd: 2.38, // .093 ±.015
+    shoulderRise: 12,
+    shoulder: 'rounded',
+    heel: 6,
+    wall: 1.0,
+    neckFinish: 'Astepro finish',
   },
 ];
 
-/** Shoulder and neck: a quarter ellipse from the body to the neck, centred on the neck. */
-function shoulder(bodyR: number, neckR: number, bodyTop: number, steps = 8): ProfilePoint[] {
+/** Quarter ellipse from the straight body up to the neck, tangent to both. */
+function ellipseShoulder(bodyR: number, neckR: number, bodyTop: number, rise: number, steps = 8): ProfilePoint[] {
   const pts: ProfilePoint[] = [];
   for (let i = 1; i <= steps; i++) {
     const t = (i / steps) * (Math.PI / 2);
-    pts.push([neckR + (bodyR - neckR) * Math.cos(t), bodyTop + SHOULDER_RISE * Math.sin(t)]);
+    pts.push([neckR + (bodyR - neckR) * Math.cos(t), bodyTop + rise * Math.sin(t)]);
+  }
+  return pts;
+}
+
+/**
+ * Straight wall, a round corner, then a short slope into the neck.
+ * The corner radius is half the rise, so the cylinder stays full width
+ * until near the top.
+ */
+function roundedShoulder(bodyR: number, neckR: number, bodyTop: number, rise: number, steps = 6): ProfilePoint[] {
+  const blend = Math.min(rise * 0.5, (bodyR - neckR) * 0.55);
+  const pts: ProfilePoint[] = [];
+  for (let i = 1; i <= steps; i++) {
+    const t = (i / steps) * (Math.PI / 2);
+    pts.push([bodyR - blend * (1 - Math.cos(t)), bodyTop + blend * Math.sin(t)]);
+  }
+  pts.push([neckR, bodyTop + rise]);
+  return pts;
+}
+
+function shoulder(s: AsteproSpec, bodyR: number, neckR: number, bodyTop: number): ProfilePoint[] {
+  return s.shoulder === 'ellipse'
+    ? ellipseShoulder(bodyR, neckR, bodyTop, s.shoulderRise)
+    : roundedShoulder(bodyR, neckR, bodyTop, s.shoulderRise);
+}
+
+/** Flat bottom with a rounded heel out to the full body radius. */
+function heel(radius: number, heelR: number, y0: number, steps = 6): ProfilePoint[] {
+  const pts: ProfilePoint[] = [[Math.max(radius - heelR, 0), y0]];
+  for (let i = 1; i <= steps; i++) {
+    const t = (i / steps) * (Math.PI / 2);
+    pts.push([(radius - heelR) + heelR * Math.sin(t), y0 + heelR * (1 - Math.cos(t))]);
   }
   return pts;
 }
@@ -74,38 +132,56 @@ function shoulder(bodyR: number, neckR: number, bodyTop: number, steps = 8): Pro
 function buildOuter(s: AsteproSpec): ProfilePoint[] {
   const R = s.bodyDiameter / 2;
   const finishBottom = s.overall - s.finishHeight;
-  const bodyTop = finishBottom - SHOULDER_RISE;
+  const bodyTop = finishBottom - s.shoulderRise;
   return [
     [0, 0],
-    [BASE_FLOOR_RATIO * R, 0],
-    [R, BASE_TAPER],
+    ...heel(R, s.heel, 0),
     [R, bodyTop],
-    ...shoulder(R, NECK_D / 2, bodyTop),
+    ...shoulder(s, R, NECK_D / 2, bodyTop),
     [ROOT_D / 2, finishBottom],
     [ROOT_D / 2, s.overall],
     [BORE_D / 2, s.overall],
   ];
 }
 
-function buildInner(s: AsteproSpec): ProfilePoint[] {
-  const R = s.bodyDiameter / 2 - WALL;
-  const neckR = NECK_D / 2 - WALL;
+function buildInner(s: AsteproSpec, wall: number): ProfilePoint[] {
+  const R = s.bodyDiameter / 2 - wall;
+  const neckR = NECK_D / 2 - wall;
   const finishBottom = s.overall - s.finishHeight;
-  const bodyTop = finishBottom - SHOULDER_RISE;
+  const bodyTop = finishBottom - s.shoulderRise;
+  const heelR = Math.max(s.heel - wall, 0.4);
   return [
-    [0, WALL],
-    [BASE_FLOOR_RATIO * (s.bodyDiameter / 2) - WALL, WALL],
-    [R, BASE_TAPER],
+    [0, wall],
+    ...heel(R, heelR, wall),
     [R, bodyTop],
-    ...shoulder(R, neckR, bodyTop),
+    ...shoulder(s, R, neckR, bodyTop),
     [neckR, s.overall],
     [BORE_D / 2, s.overall],
   ];
 }
 
+/** Resin weight (g) for a given wall, from the outer and inner profiles. */
+function resinWeight(s: AsteproSpec, wall: number): number {
+  const volume = revolvedVolume(buildOuter(s)) - revolvedVolume(buildInner(s, wall));
+  return (volume / 1000) * HDPE_DENSITY;
+}
+
+/** Bisect the wall so the resin weight matches `targetG` (resin rises with the wall). */
+function solveWall(s: AsteproSpec, targetG: number): number {
+  let lo = 0.2;
+  let hi = 4;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (resinWeight(s, mid) > targetG) hi = mid;
+    else lo = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 function buildBottle(s: AsteproSpec): Bottle {
+  const wall = s.weightG !== undefined ? solveWall(s, s.weightG) : (s.wall ?? 1.0);
   const outer = buildOuter(s);
-  const inner = buildInner(s);
+  const inner = buildInner(s, wall);
   const resinG = ((revolvedVolume(outer) - revolvedVolume(inner)) / 1000) * HDPE_DENSITY;
   const now = new Date();
   const bottle: Bottle = {
@@ -120,10 +196,10 @@ function buildBottle(s: AsteproSpec): Bottle {
       baseDiameter: s.bodyDiameter,
       neckDiameter: CREST_D,
       neckHeight: s.finishHeight,
-      neckFinish: 'Astepro finish',
-      shoulderCurveRadius: SHOULDER_RISE,
+      neckFinish: s.neckFinish,
+      shoulderCurveRadius: s.shoulderRise,
       shoulderAngle: 45,
-      wallThickness: WALL,
+      wallThickness: wall,
     },
     capStyle: 'screw-cap',
     capColor: '#FFFFFF',
@@ -136,7 +212,7 @@ function buildBottle(s: AsteproSpec): Bottle {
       source: s.source,
       outer,
       inner,
-      wallThickness: WALL,
+      wallThickness: wall,
       thread: {
         rootRadius: ROOT_D / 2,
         crestRadius: CREST_D / 2,
