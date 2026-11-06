@@ -50,6 +50,8 @@ interface AsteproSpec {
   heel: number;
   /** Solve the wall so the resin weight matches this (g). */
   weightG?: number;
+  /** Brimful is to the base of the finish (shoulder top), not the top of the bore. */
+  brimfulAtFinishBase?: boolean;
   /** Otherwise use this wall thickness (mm). */
   wall?: number;
   neckFinish: string;
@@ -69,6 +71,7 @@ const ASTEPRO_SPECS: AsteproSpec[] = [
     shoulder: 'ellipse',
     heel: 4,
     weightG: 6.5,
+    brimfulAtFinishBase: true,
     neckFinish: 'M18/SP415',
   },
   {
@@ -213,6 +216,7 @@ function buildBottle(s: AsteproSpec): Bottle {
       outer,
       inner,
       wallThickness: wall,
+      brimfulY: s.brimfulAtFinishBase ? s.overall - s.finishHeight : undefined,
       thread: {
         rootRadius: ROOT_D / 2,
         crestRadius: CREST_D / 2,

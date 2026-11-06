@@ -350,7 +350,9 @@ export function radiusAt(points: ProfilePoint[], y: number): number {
 
 /** Brimful capacity of a drawing profile (mL). */
 export function profileCapacityMl(profile: DrawingProfile): number {
-  return revolvedVolume(profile.inner, profile.oval, profile.wallThickness) / 1000;
+  const top = profile.brimfulY;
+  const cavity = top === undefined ? profile.inner : profile.inner.filter(([, y]) => y <= top + 1e-6);
+  return revolvedVolume(cavity, profile.oval, profile.wallThickness) / 1000;
 }
 
 /** Outside surface area of a drawing profile (cm²). */

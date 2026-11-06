@@ -127,6 +127,11 @@ export interface DrawingProfile {
   inner: ProfilePoint[];
   /** Body wall thickness used to derive `inner` (mm). */
   wallThickness: number;
+  /**
+   * Height the brimful capacity is measured to (mm), at a profile point. Unset
+   * means the top of the cavity. The bore above it is still modelled.
+   */
+  brimfulY?: number;
   thread?: {
     rootRadius: number;
     crestRadius: number;
