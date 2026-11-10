@@ -4,7 +4,7 @@
  * and per-bottle key measurements with rows aligned across both portfolios.
  */
 
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { Bottle } from '@/types';
 import { BottleSeries } from '@/types/bottleSeries';
 import { Product } from '@/types/product';
@@ -201,13 +201,34 @@ function difference(delta: number, base: number, fmt: (v: number) => string): st
   return `${sign}${fmt(Math.abs(delta))}${pct}`;
 }
 
+/** Drop unchecked rows, and any group heading left with nothing under it. */
+function visibleRows(rows: Row[], labels: string[] | null): Row[] {
+  if (!labels) return rows;
+  const keep = new Set(labels);
+  const out: Row[] = [];
+  let pending: Extract<Row, { group: string }> | null = null;
+  for (const row of rows) {
+    if ('group' in row) {
+      pending = row;
+      continue;
+    }
+    if (!keep.has(row.label)) continue;
+    if (pending) {
+      out.push(pending);
+      pending = null;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
 function range(values: (number | undefined)[]): [number, number] | null {
   const v = values.filter((x): x is number => x !== undefined);
   return v.length ? [Math.min(...v), Math.max(...v)] : null;
 }
 
 export default function PortfolioDimensionComparison({ sides: picked, sideIndex, units }: Props) {
-  const { fillProductId, fillCount } = useCompareSelection();
+  const { fillProductId, fillCount, importantRows } = useCompareSelection();
   const assessments = useStore((s) => s.assessments);
   const fill = useMemo<(FillContext & { packingRuns: number }) | null>(() => {
     const product = PRODUCT_PRESETS.find((p) => p.id === fillProductId);
@@ -232,6 +253,7 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
   );
   const columns = sides.length > 1 ? 'grid-cols-2' : 'grid-cols-1';
   const headToHead = sides.length === 2 && sides.every((s) => s.bottles.length === 1);
+  const shown = headToHead ? visibleRows(rows, importantRows) : rows;
 
   // One mm-to-px scale for every silhouette, so sizes compare directly
   const tallest = Math.max(...sides.flatMap((s) => s.measures.map((m) => m.heightWithClosure)), 1);
@@ -286,15 +308,18 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
 
       {/* Range summary */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200">
-          <h4 className="text-sm font-semibold text-gray-900">
-            {headToHead ? 'Head-to-head' : 'Range summary'}
-          </h4>
-          <p className="text-xs text-gray-500">
-            {headToHead
-              ? 'Side B against Side A; percentages are relative to A'
-              : 'Smallest to largest picked bottle on each side'}
-          </p>
+        <div className="px-4 py-3 border-b border-gray-200 flex items-start justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-900">
+              {headToHead ? 'Head-to-head' : 'Range summary'}
+            </h4>
+            <p className="text-xs text-gray-500">
+              {headToHead
+                ? 'Side B against Side A; percentages are relative to A'
+                : 'Smallest to largest picked bottle on each side'}
+            </p>
+          </div>
+          {headToHead && <RowPicker rows={rows} />}
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -309,8 +334,24 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {rows.map((row, r) => {
-              if ('group' in row || !row.numeric) return null;
+            {shown.map((row, r) => {
+              if ('group' in row || (!headToHead && !row.numeric)) return null;
+              if (!row.numeric) {
+                const texts = sides.map((s) => row.value(s.measures[0], units));
+                return (
+                  <tr key={r}>
+                    <td className="px-4 py-2 text-gray-700">{row.label}</td>
+                    {texts.map((t, i) => (
+                      <td key={i} className="px-4 py-2 text-right text-gray-900">{t}</td>
+                    ))}
+                    {headToHead && (
+                      <td className="px-4 py-2 text-right font-mono text-gray-600">
+                        {texts[0] === texts[1] ? 'same' : 'differs'}
+                      </td>
+                    )}
+                  </tr>
+                );
+              }
               const cells = sides.map((s) => range(s.measures.map(row.numeric!)));
               const fmt = (v: number) =>
                 row.kind === 'length' ? len(v, units) : row.kind === 'area' ? area(v, units) : v.toFixed(1);
@@ -332,6 +373,13 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
                 </tr>
               );
             })}
+            {headToHead && !shown.some((row) => 'label' in row) && (
+              <tr>
+                <td colSpan={sides.length + 2} className="px-4 py-6 text-center text-sm text-gray-400">
+                  No rows selected.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -356,7 +404,7 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, r) =>
+                  {shown.map((row, r) =>
                     'group' in row ? (
                       <tr key={r} className="bg-gray-50/70">
                         <td
@@ -394,6 +442,94 @@ export default function PortfolioDimensionComparison({ sides: picked, sideIndex,
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Choose which measurements a head-to-head keeps. Unset keeps every row. */
+function RowPicker({ rows }: { rows: Row[] }) {
+  const { importantRows, setImportantRows } = useCompareSelection();
+  const [open, setOpen] = useState(false);
+  const [menuBox, setMenuBox] = useState<{ top: number; right: number } | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  function toggleOpen() {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) setMenuBox({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    setOpen((value) => !value);
+  }
+  const labels = rows.flatMap((row) => ('label' in row ? [row.label] : []));
+  const selected = new Set(importantRows ?? labels);
+  const narrowed = importantRows !== null;
+
+  function commit(next: Set<string>) {
+    const kept = labels.filter((label) => next.has(label));
+    setImportantRows(kept.length === labels.length ? null : kept);
+  }
+
+  function toggle(label: string) {
+    const next = new Set(selected);
+    if (next.has(label)) next.delete(label);
+    else next.add(label);
+    commit(next);
+  }
+
+  function toggleGroup(start: number) {
+    const group: string[] = [];
+    for (let i = start + 1; i < rows.length && !('group' in rows[i]); i++) {
+      const row = rows[i];
+      if ('label' in row) group.push(row.label);
+    }
+    const next = new Set(selected);
+    const allOn = group.every((label) => next.has(label));
+    for (const label of group) {
+      if (allOn) next.delete(label);
+      else next.add(label);
+    }
+    commit(next);
+  }
+
+  return (
+    <div className="relative z-30 shrink-0">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={toggleOpen}
+        className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+      >
+        {narrowed ? `Rows (${selected.size})` : 'All rows'}
+      </button>
+      {open && menuBox && (
+        <>
+          <button type="button" aria-label="Close row list" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-50 w-64 max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white p-2 shadow-lg"
+            style={{ top: menuBox.top, right: menuBox.right }}
+          >
+            <div className="flex justify-between px-2 py-1 text-xs">
+              <button type="button" className="text-blue-600 hover:underline" onClick={() => setImportantRows(null)}>All</button>
+              <button type="button" className="text-gray-500 hover:underline" onClick={() => setImportantRows([])}>None</button>
+            </div>
+            {rows.map((row, i) =>
+              'group' in row ? (
+                <button
+                  key={row.group}
+                  type="button"
+                  onClick={() => toggleGroup(i)}
+                  className="mt-1 w-full px-2 pt-2 pb-1 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600"
+                >
+                  {row.group}
+                </button>
+              ) : (
+                <label key={row.label} className="flex items-center gap-2 rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-50">
+                  <input type="checkbox" checked={selected.has(row.label)} onChange={() => toggle(row.label)} />
+                  {row.label}
+                </label>
+              )
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

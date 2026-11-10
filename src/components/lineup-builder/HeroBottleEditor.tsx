@@ -2,11 +2,13 @@
  * Hero Bottle Editor
  * Pick one size from the active series as the "hero": the 3D view focuses on
  * it, the rest of the lineup fades out, and the editor below edits only it.
+ * Closures uploaded with the portfolio are previewed under the size tabs.
  */
 
 import { useStore, useActiveSeries } from '@/store';
 import { LayoutGrid } from 'lucide-react';
 import IndividualEditor from './IndividualEditor';
+import ClosureGallery from './ClosureGallery';
 
 export default function HeroBottleEditor() {
   const { ui, setHeroBottle } = useStore();
@@ -51,6 +53,12 @@ export default function HeroBottleEditor() {
           })}
         </div>
       </div>
+
+      <ClosureGallery
+        bottles={activeSeries.bottles}
+        heroBottle={hero}
+        onSelectBottle={(id) => setHeroBottle(id)}
+      />
 
       {hero ? (
         <>

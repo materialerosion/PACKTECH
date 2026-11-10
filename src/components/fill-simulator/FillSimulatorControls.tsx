@@ -36,7 +36,7 @@ export default function FillSimulatorControls() {
       <div>
         <div className="flex items-center gap-2">
           <ClipboardCheck className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Technical Packaging Tool</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Headspace / Fill Simulator</h2>
         </div>
         <p className="text-xs text-gray-500 mt-0.5">Headspace assessment</p>
       </div>

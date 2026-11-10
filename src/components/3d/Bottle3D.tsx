@@ -302,7 +302,7 @@ export function DrawingBottle({
       ))}
       {collar && (
         <group position={[0, collar.seatY, 0]}>
-          <CollarModel collar={collar} color={capColor} opacity={dimmed ? opacity : 1} />
+          <CollarModel collar={collar} color={bodyColor} opacity={dimmed ? opacity : 1} />
         </group>
       )}
       {closure && (

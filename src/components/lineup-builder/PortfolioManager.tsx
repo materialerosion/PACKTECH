@@ -10,6 +10,7 @@ import { buildPainCardioBottles } from '@/data/presets/painCardio';
 import { buildWestMercuryBottles } from '@/data/presets/westMercury';
 import { buildAfrinBottle } from '@/data/presets/afrin';
 import { buildAsteproBottles } from '@/data/presets/astepro';
+import { buildAmapharmPetBottles } from '@/data/presets/amapharmPet';
 import { closureLabel } from '@/services/portfolioService';
 import { FolderPlus, Plus, Trash2, Package } from 'lucide-react';
 
@@ -39,6 +40,7 @@ export default function PortfolioManager() {
       ...buildWestMercuryBottles().map((bottle) => ({ bottle, group: 'Iconic 2-piece drawing' })),
       { bottle: buildAfrinBottle(), group: 'Nasal spray drawing' },
       ...buildAsteproBottles().map((bottle) => ({ bottle, group: 'Astepro 2-piece drawing' })),
+      ...buildAmapharmPetBottles().map((bottle) => ({ bottle, group: 'Amapharm PET drawing' })),
     ],
     []
   );
