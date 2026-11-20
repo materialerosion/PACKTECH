@@ -19,6 +19,9 @@ import { Bottle } from '@/types/bottle';
 import { radiusAt, sectionPoint } from '@/services/drawingProfile';
 
 const PHYSICS_TIME_STEP = 1 / 60;
+const PHYSICS_ALLOWED_LINEAR_ERROR = 0.0002; // × lengthUnit = 0.2 mm
+const PHYSICS_SOLVER_ITERATIONS = 8;
+const PHYSICS_CONTACT_FREQUENCY = 90; // Hz
 const MAX_PHYSICS_FRAME_DELTA = 1 / 30;
 const PHYSICS_FRAME_BUDGET_MS = 10;
 const FAST_PHYSICS_FRAME_BUDGET_MS = 14;
@@ -197,9 +200,14 @@ export default function FillScene3D() {
             timeStep={PHYSICS_TIME_STEP}
             paused
             interpolate={false}
-            // Tolerance props (predictionDistance, allowedLinearError) are
-            // normalized and multiplied by lengthUnit; keep library defaults.
+            // allowedLinearError and predictionDistance are normalized and
+            // multiplied by lengthUnit. The defaults (1 mm error, 30 Hz) let
+            // loaded pieces sink 2-4 mm into ~1 mm walls and into each other,
+            // compressing the pile; these keep overlap under the wall thickness.
             lengthUnit={1000}
+            allowedLinearError={PHYSICS_ALLOWED_LINEAR_ERROR}
+            numSolverIterations={PHYSICS_SOLVER_ITERATIONS}
+            contactNaturalFrequency={PHYSICS_CONTACT_FREQUENCY}
             maxCcdSubsteps={4}
           >
             <BudgetedPhysicsStepper timeRef={physicsTimeRef} ccdSpeed={ccdSpeed} />

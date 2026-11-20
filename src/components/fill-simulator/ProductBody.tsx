@@ -14,6 +14,7 @@ import {
   BallCollider,
   ConvexHullCollider,
 } from '@react-three/rapier';
+import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import { Product } from '@/types/product';
 import {
@@ -139,7 +140,18 @@ function ProductBody({
     >
       {colliderParams.parts.map((part, i) => renderColliderPart(part, `${id}-col-${i}`))}
       
-      {product.shape !== 'dome' && (
+      {meshParams.geometryType === 'rounded-box' && (
+        <RoundedBox
+          args={[meshParams.args[0], meshParams.args[1], meshParams.args[2]]}
+          radius={meshParams.args[3]}
+          smoothness={2}
+          castShadow
+        >
+          <meshStandardMaterial color={color} roughness={0.4} metalness={0.1} />
+        </RoundedBox>
+      )}
+
+      {product.shape !== 'dome' && meshParams.geometryType !== 'rounded-box' && (
         <mesh castShadow>
           {meshParams.geometryType === 'cylinder' && (
             <cylinderGeometry args={meshParams.args as [number, number, number, number]} />

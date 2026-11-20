@@ -121,7 +121,7 @@ export function computeHeadspace(
 }
 
 /** Packing fraction (solid ÷ bulk volume) of the 150 Womens Tablet runs in the 548 mL. */
-export const DEFAULT_PACKING_FRACTION = 0.59;
+export const DEFAULT_PACKING_FRACTION = 0.38;
 
 /** Lowest height whose volume below holds `bulkMl` (mm); capped at the bottle top. */
 export function heightForVolume(bottle: Bottle, bulkMl: number): number {

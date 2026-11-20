@@ -111,7 +111,7 @@ export function getProductColliderParams(product: Product): ProductColliderParam
       // made each pile step ~2.5x slower (Rapier cylinders use generic GJK).
       const halfH = height / 2;
       const halfW = width / 2;
-      const r = Math.min(halfH, halfW) * 0.7;
+      const r = oblongCornerRadius(product);
       return {
         parts: [{ type: 'round-cuboid', args: [length / 2 - r, halfH - r, halfW - r, r] }],
       };
@@ -219,8 +219,15 @@ export function getProductHalfExtents(product: Product): [number, number, number
  * Get the Three.js mesh geometry type and args for visual rendering.
  */
 export interface ProductMeshParams {
-  geometryType: 'cylinder' | 'capsule' | 'box' | 'sphere';
+  /** 'rounded-box' args: [length, height, width, cornerRadius] */
+  geometryType: 'cylinder' | 'capsule' | 'box' | 'rounded-box' | 'sphere';
   args: number[];
+}
+
+/** Edge radius of the oblong-tablet rounded box, shared by collider and mesh. */
+function oblongCornerRadius(product: Product): number {
+  const { width, height } = product.dimensions;
+  return Math.min(height, width) * 0.5 * 0.7;
 }
 
 export function getProductMeshParams(product: Product): ProductMeshParams {
@@ -239,10 +246,9 @@ export function getProductMeshParams(product: Product): ProductMeshParams {
         args: [width / 2, length - width, 8, 16],
       };
     case 'oblong-tablet':
-      // Visual stadium approximates compound collider (length × width × height)
       return {
-        geometryType: 'box',
-        args: [length, height, width],
+        geometryType: 'rounded-box',
+        args: [length, height, width, oblongCornerRadius(product)],
       };
     case 'gummy':
       return {

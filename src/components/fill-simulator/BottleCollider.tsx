@@ -21,6 +21,12 @@ interface BottleColliderProps {
   bottle: Bottle;
 }
 
+/**
+ * The floor slab extends this far below the cavity floor. Drawing bottles have
+ * ~1 mm floors, thinner than a pile presses a piece into a box collider.
+ */
+const MIN_FLOOR_SLAB = 10;
+
 export default function BottleCollider({ bottle }: BottleColliderProps) {
   const { shape, dimensions, bodyColor, profile } = bottle;
   const dimensionsKey = JSON.stringify(dimensions);
@@ -31,12 +37,16 @@ export default function BottleCollider({ bottle }: BottleColliderProps) {
   }, [shape, dimensionsKey, profile]);
 
   const floor = useMemo(() => {
+    const slab = (rx: number, rz: number, top: number) => {
+      const depth = Math.max(top, MIN_FLOOR_SLAB);
+      return { rx, rz, halfHeight: depth / 2, centerY: top - depth / 2 };
+    };
     if (profile) {
       const r = profile.outer.reduce((m, [pr]) => Math.max(m, pr), 0);
-      return { rx: r, rz: r * (profile.oval?.depthRatio ?? 1), halfHeight: profile.inner[0][1] / 2 };
+      return slab(r, r * (profile.oval?.depthRatio ?? 1), profile.inner[0][1]);
     }
     const { rx, rz } = getBodyOuterRadii(dimensions, shape);
-    return { rx, rz, halfHeight: getFloorThickness(dimensions) / 2 };
+    return slab(rx, rz, getFloorThickness(dimensions));
   }, [shape, dimensionsKey, profile]);
 
   const visualGeometry = useMemo(() => {
@@ -58,7 +68,7 @@ export default function BottleCollider({ bottle }: BottleColliderProps) {
       />
       <CuboidCollider
         args={[floor.rx, floor.halfHeight, floor.rz]}
-        position={[0, floor.halfHeight, 0]}
+        position={[0, floor.centerY, 0]}
         friction={0.6}
         restitution={0.05}
       />
