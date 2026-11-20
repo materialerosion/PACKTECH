@@ -1,8 +1,8 @@
-# PACK2 - Pharmaceutical Packaging Design Application
+# PACKTECH - Pharmaceutical Packaging Design Application
 
 A sophisticated single-page web application for pharmaceutical packaging design that helps users generate and compare bottle lineups for over-the-counter (OTC) medicine products.
 
-![PACK2 Screenshot](docs/screenshot.png)
+![PACKTECH Screenshot](docs/screenshot.png)
 
 ## Features
 
@@ -112,7 +112,7 @@ The production build outputs to the `dist/` directory.
 
 ## Deployment
 
-PACK2 is a static single-page application (SPA) that can be deployed to any static hosting service. The build output in `dist/` contains all files needed for deployment.
+PACKTECH is a static single-page application (SPA) that can be deployed to any static hosting service. The build output in `dist/` contains all files needed for deployment.
 
 ### Vercel (Recommended)
 

@@ -1,50 +1,80 @@
 /**
  * Bottle Collider Builder
  * Builds trimesh geometry data from bottle dimensions for Rapier physics colliders.
- * Generates a hollow open-top bottle shape from four geometric pieces:
- * - Bottom disc (solid floor)
- * - Body shell (hollow cylinder)
- * - Neck shell (hollow cylinder, narrower)
- * - Shoulder transition ring
+ * Generates a hollow open-top bottle: floor, body shell, shoulder loft, neck shell.
+ * Supports circular and oval (elliptical) body cross-sections.
  */
 
-import { BottleDimensions } from '@/types/bottle';
+import { Bottle, BottleDimensions, BottleShape, DrawingProfile, ProfilePoint } from '@/types/bottle';
+import { sectionPoint } from './drawingProfile';
 
 export interface ColliderGeometry {
   vertices: Float32Array;
   indices: Uint32Array;
 }
 
-const SEGMENTS = 24; // Number of radial segments for cylinder approximation
+const SEGMENTS = 48; // Radial segments for wall contact fidelity
+const SHOULDER_STEPS = 8; // Rings in the shoulder loft
 
 /**
- * Generate a ring of vertices at a given height and radius.
+ * Floor slab thickness used by both the trimesh and inside-tests.
+ */
+export function getFloorThickness(dims: BottleDimensions): number {
+  const fromWall = Math.max(dims.wallThickness * 3, 3);
+  const fromBase = (dims.baseIndentDepth ?? 0) + dims.wallThickness;
+  return Math.max(fromWall, fromBase);
+}
+
+/**
+ * Shoulder loft height clamped so it fits within the body.
+ */
+export function getShoulderHeight(dims: BottleDimensions): number {
+  const bodyOnly = dims.bodyHeight - dims.neckHeight;
+  const requested = Math.max(dims.shoulderCurveRadius || 0, 2);
+  return Math.min(requested, Math.max(bodyOnly * 0.45, 2));
+}
+
+/**
+ * Body outer radii (X = major, Z = minor). Circular when not oval.
+ */
+export function getBodyOuterRadii(
+  dims: BottleDimensions,
+  shape: BottleShape
+): { rx: number; rz: number } {
+  const rx = dims.diameter / 2;
+  const widthRatio = shape === 'oval' ? (dims.widthRatio ?? 0.6) : 1;
+  return { rx, rz: rx * widthRatio };
+}
+
+/**
+ * Generate an elliptical (or circular) ring of vertices at a given height.
  */
 function generateRing(
   vertices: number[],
-  radius: number,
+  radiusX: number,
+  radiusZ: number,
   y: number,
   segments: number
 ): void {
   for (let i = 0; i < segments; i++) {
     const angle = (i / segments) * Math.PI * 2;
     vertices.push(
-      Math.cos(angle) * radius,
+      Math.cos(angle) * radiusX,
       y,
-      Math.sin(angle) * radius
+      Math.sin(angle) * radiusZ
     );
   }
 }
 
 /**
  * Connect two rings of vertices with triangles.
- * ring1Start and ring2Start are the starting vertex indices.
  */
 function connectRings(
   indices: number[],
   ring1Start: number,
   ring2Start: number,
-  segments: number
+  segments: number,
+  reverse = false
 ): void {
   for (let i = 0; i < segments; i++) {
     const next = (i + 1) % segments;
@@ -53,142 +83,200 @@ function connectRings(
     const c = ring2Start + i;
     const d = ring2Start + next;
     
-    // Two triangles per quad
-    indices.push(a, c, b);
-    indices.push(b, c, d);
+    if (reverse) {
+      indices.push(a, b, c);
+      indices.push(b, d, c);
+    } else {
+      indices.push(a, c, b);
+      indices.push(b, c, d);
+    }
   }
 }
 
 /**
- * Generate a solid disc (filled circle) at a given height.
+ * Generate a solid elliptical disc at a given height.
  */
 function generateDisc(
   vertices: number[],
   indices: number[],
-  radius: number,
+  radiusX: number,
+  radiusZ: number,
   y: number,
-  segments: number
+  segments: number,
+  reverse = false
 ): void {
   const centerIdx = vertices.length / 3;
-  vertices.push(0, y, 0); // center vertex
+  vertices.push(0, y, 0);
   
   const ringStart = vertices.length / 3;
-  generateRing(vertices, radius, y, segments);
+  generateRing(vertices, radiusX, radiusZ, y, segments);
   
-  // Fan triangles from center
   for (let i = 0; i < segments; i++) {
     const next = (i + 1) % segments;
-    indices.push(centerIdx, ringStart + i, ringStart + next);
+    if (reverse) {
+      indices.push(centerIdx, ringStart + next, ringStart + i);
+    } else {
+      indices.push(centerIdx, ringStart + i, ringStart + next);
+    }
   }
 }
 
 /**
- * Generate an annulus (ring) connecting two radii at a given height.
+ * Generate an annulus connecting two elliptical radii at a given height.
  */
 function generateAnnulus(
   vertices: number[],
   indices: number[],
-  innerRadius: number,
-  outerRadius: number,
+  innerRx: number,
+  innerRz: number,
+  outerRx: number,
+  outerRz: number,
   y: number,
-  segments: number
+  segments: number,
+  reverse = false
 ): void {
   const outerStart = vertices.length / 3;
-  generateRing(vertices, outerRadius, y, segments);
+  generateRing(vertices, outerRx, outerRz, y, segments);
   
   const innerStart = vertices.length / 3;
-  generateRing(vertices, innerRadius, y, segments);
+  generateRing(vertices, innerRx, innerRz, y, segments);
   
-  connectRings(indices, outerStart, innerStart, segments);
+  connectRings(indices, outerStart, innerStart, segments, reverse);
+}
+
+/**
+ * Shoulder radius at parameter t ∈ [0,1] (quarter-ellipse loft like Bottle3D).
+ */
+function shoulderRadiiAt(
+  t: number,
+  bodyRx: number,
+  bodyRz: number,
+  neckR: number
+): { rx: number; rz: number } {
+  const angle = t * (Math.PI / 2);
+  const s = Math.sin(angle);
+  return {
+    rx: bodyRx - (bodyRx - neckR) * s,
+    rz: bodyRz - (bodyRz - neckR) * s,
+  };
+}
+
+export interface BuildBottleColliderOptions {
+  shape?: BottleShape;
 }
 
 /**
  * Build the complete bottle collider geometry from bottle dimensions.
  * Returns vertices and indices suitable for Rapier trimesh collider.
  */
-export function buildBottleColliderGeometry(dims: BottleDimensions): ColliderGeometry {
+export function buildBottleColliderGeometry(
+  dims: BottleDimensions,
+  options: BuildBottleColliderOptions = {}
+): ColliderGeometry {
+  const shape = options.shape ?? 'boston-round';
   const vertices: number[] = [];
   const indices: number[] = [];
   
   const wt = dims.wallThickness;
-  const bodyOuterR = dims.diameter / 2;
-  const bodyInnerR = bodyOuterR - wt;
+  const { rx: bodyOuterRx, rz: bodyOuterRz } = getBodyOuterRadii(dims, shape);
+  const bodyInnerRx = Math.max(bodyOuterRx - wt, 0.5);
+  const bodyInnerRz = Math.max(bodyOuterRz - wt, 0.5);
   const neckOuterR = dims.neckDiameter / 2;
-  const neckInnerR = neckOuterR - wt;
+  const neckInnerR = Math.max(neckOuterR - wt, 0.5);
   
-  // Use a thicker floor to prevent clipping (at least 3mm or 3x wall thickness)
-  const floorThickness = Math.max(wt * 3, 3);
+  const floorThickness = getFloorThickness(dims);
+  const shoulderHeight = getShoulderHeight(dims);
   
-  // Heights
   const floorBottomY = 0;
-  const floorTopY = floorThickness; // top of floor slab
-  const bodyTopY = dims.bodyHeight - dims.neckHeight; // where body meets shoulder
-  const neckBottomY = bodyTopY; // shoulder/neck transition
-  const neckTopY = dims.bodyHeight; // top of neck (open)
+  const floorTopY = floorThickness;
+  const bodyH = dims.bodyHeight - dims.neckHeight;
+  const shoulderStartY = bodyH - shoulderHeight;
+  const neckTopY = dims.bodyHeight;
   
-  // 1. Bottom disc (solid floor - bottom face)
-  generateDisc(vertices, indices, bodyOuterR, floorBottomY, SEGMENTS);
+  // 1. Floor bottom disc
+  generateDisc(vertices, indices, bodyOuterRx, bodyOuterRz, floorBottomY, SEGMENTS);
   
-  // 1b. Top of floor disc (inner floor surface)
-  generateDisc(vertices, indices, bodyInnerR, floorTopY, SEGMENTS);
+  // 1b. Floor top (inner cavity floor)
+  generateDisc(vertices, indices, bodyInnerRx, bodyInnerRz, floorTopY, SEGMENTS, true);
   
-  // 1c. Floor outer wall (short cylinder connecting bottom to top of floor)
+  // 1c. Floor outer wall
   const floorOuterBottomStart = vertices.length / 3;
-  generateRing(vertices, bodyOuterR, floorBottomY, SEGMENTS);
+  generateRing(vertices, bodyOuterRx, bodyOuterRz, floorBottomY, SEGMENTS);
   const floorOuterTopStart = vertices.length / 3;
-  generateRing(vertices, bodyOuterR, floorTopY, SEGMENTS);
+  generateRing(vertices, bodyOuterRx, bodyOuterRz, floorTopY, SEGMENTS);
   connectRings(indices, floorOuterBottomStart, floorOuterTopStart, SEGMENTS);
   
-  // 2. Bottom annulus (connects floor top to inner wall start)
-  generateAnnulus(vertices, indices, bodyInnerR, bodyOuterR, floorTopY, SEGMENTS);
+  // 2. Floor annulus (outer → inner at floor top)
+  generateAnnulus(
+    vertices, indices,
+    bodyInnerRx, bodyInnerRz,
+    bodyOuterRx, bodyOuterRz,
+    floorTopY, SEGMENTS
+  );
   
-  // 3. Body outer wall
+  // 3. Body outer wall (floor → shoulder start)
   const bodyOuterBottomStart = vertices.length / 3;
-  generateRing(vertices, bodyOuterR, floorBottomY, SEGMENTS);
-  const bodyOuterTopStart = vertices.length / 3;
-  generateRing(vertices, bodyOuterR, bodyTopY, SEGMENTS);
-  connectRings(indices, bodyOuterBottomStart, bodyOuterTopStart, SEGMENTS);
+  generateRing(vertices, bodyOuterRx, bodyOuterRz, floorBottomY, SEGMENTS);
+  const bodyOuterShoulderStart = vertices.length / 3;
+  generateRing(vertices, bodyOuterRx, bodyOuterRz, shoulderStartY, SEGMENTS);
+  connectRings(indices, bodyOuterBottomStart, bodyOuterShoulderStart, SEGMENTS);
   
-  // 4. Body inner wall (starts from top of floor slab, not from y=0)
+  // 4. Body inner wall (floor top → shoulder start), reversed winding
   const bodyInnerBottomStart = vertices.length / 3;
-  generateRing(vertices, bodyInnerR, floorTopY, SEGMENTS);
-  const bodyInnerTopStart = vertices.length / 3;
-  generateRing(vertices, bodyInnerR, bodyTopY, SEGMENTS);
-  connectRings(indices, bodyInnerTopStart, bodyInnerBottomStart, SEGMENTS); // reversed winding for inner
+  generateRing(vertices, bodyInnerRx, bodyInnerRz, floorTopY, SEGMENTS);
+  const bodyInnerShoulderStart = vertices.length / 3;
+  generateRing(vertices, bodyInnerRx, bodyInnerRz, shoulderStartY, SEGMENTS);
+  connectRings(indices, bodyInnerShoulderStart, bodyInnerBottomStart, SEGMENTS);
   
-  // 5. Shoulder transition - outer (body outer to neck outer)
-  const shoulderOuterBodyStart = vertices.length / 3;
-  generateRing(vertices, bodyOuterR, bodyTopY, SEGMENTS);
-  const shoulderOuterNeckStart = vertices.length / 3;
-  generateRing(vertices, neckOuterR, neckBottomY + 2, SEGMENTS); // slight offset for shoulder
-  connectRings(indices, shoulderOuterBodyStart, shoulderOuterNeckStart, SEGMENTS);
+  // 5–6. Shoulder loft (outer + inner), multi-ring quarter-ellipse
+  let prevOuterStart = bodyOuterShoulderStart;
+  let prevInnerStart = bodyInnerShoulderStart;
+  let lastOuterStart = bodyOuterShoulderStart;
+  let lastInnerStart = bodyInnerShoulderStart;
   
-  // 6. Shoulder transition - inner (body inner to neck inner)
-  const shoulderInnerBodyStart = vertices.length / 3;
-  generateRing(vertices, bodyInnerR, bodyTopY, SEGMENTS);
-  const shoulderInnerNeckStart = vertices.length / 3;
-  generateRing(vertices, neckInnerR, neckBottomY + 2, SEGMENTS);
-  connectRings(indices, shoulderInnerNeckStart, shoulderInnerBodyStart, SEGMENTS); // reversed
+  for (let step = 1; step <= SHOULDER_STEPS; step++) {
+    const t = step / SHOULDER_STEPS;
+    // Match Bottle3D: h = start + shoulderHeight * (1 - cos(angle))
+    const ringY = shoulderStartY + shoulderHeight * (1 - Math.cos(t * (Math.PI / 2)));
+    
+    const outer = shoulderRadiiAt(t, bodyOuterRx, bodyOuterRz, neckOuterR);
+    const inner = shoulderRadiiAt(t, bodyInnerRx, bodyInnerRz, neckInnerR);
+    
+    const outerStart = vertices.length / 3;
+    generateRing(vertices, outer.rx, outer.rz, ringY, SEGMENTS);
+    connectRings(indices, prevOuterStart, outerStart, SEGMENTS);
+    prevOuterStart = outerStart;
+    lastOuterStart = outerStart;
+    
+    const innerRx = Math.max(inner.rx, 0.5);
+    const innerRz = Math.max(inner.rz, 0.5);
+    const innerStart = vertices.length / 3;
+    generateRing(vertices, innerRx, innerRz, ringY, SEGMENTS);
+    connectRings(indices, innerStart, prevInnerStart, SEGMENTS); // reversed for inward normal
+    prevInnerStart = innerStart;
+    lastInnerStart = innerStart;
+  }
   
-  // 7. Shoulder top annulus (connects outer to inner at shoulder)
-  generateAnnulus(vertices, indices, neckInnerR, neckOuterR, neckBottomY + 2, SEGMENTS);
+  // 7. Shoulder top annulus (reuse last loft rings)
+  connectRings(indices, lastOuterStart, lastInnerStart, SEGMENTS);
   
-  // 8. Neck outer wall
-  const neckOuterBottomStart = vertices.length / 3;
-  generateRing(vertices, neckOuterR, neckBottomY + 2, SEGMENTS);
+  // 8. Neck outer wall (from last outer shoulder ring)
   const neckOuterTopStart = vertices.length / 3;
-  generateRing(vertices, neckOuterR, neckTopY, SEGMENTS);
-  connectRings(indices, neckOuterBottomStart, neckOuterTopStart, SEGMENTS);
+  generateRing(vertices, neckOuterR, neckOuterR, neckTopY, SEGMENTS);
+  connectRings(indices, lastOuterStart, neckOuterTopStart, SEGMENTS);
   
   // 9. Neck inner wall
-  const neckInnerBottomStart = vertices.length / 3;
-  generateRing(vertices, neckInnerR, neckBottomY + 2, SEGMENTS);
   const neckInnerTopStart = vertices.length / 3;
-  generateRing(vertices, neckInnerR, neckTopY, SEGMENTS);
-  connectRings(indices, neckInnerTopStart, neckInnerBottomStart, SEGMENTS); // reversed
+  generateRing(vertices, neckInnerR, neckInnerR, neckTopY, SEGMENTS);
+  connectRings(indices, neckInnerTopStart, lastInnerStart, SEGMENTS);
   
-  // 10. Top rim annulus (open top - just the rim)
-  generateAnnulus(vertices, indices, neckInnerR, neckOuterR, neckTopY, SEGMENTS);
+  // 10. Top rim annulus
+  generateAnnulus(
+    vertices, indices,
+    neckInnerR, neckInnerR,
+    neckOuterR, neckOuterR,
+    neckTopY, SEGMENTS
+  );
   
   return {
     vertices: new Float32Array(vertices),
@@ -197,31 +285,125 @@ export function buildBottleColliderGeometry(dims: BottleDimensions): ColliderGeo
 }
 
 /**
- * Check if a position is inside the bottle.
+ * Single-surface collision shell: inner body wall, inner shoulder, inner neck and
+ * top rim, without the floor (use a box collider at getFloorThickness instead).
+ * Outer surfaces sit within contact-prediction distance of the inner ones, so
+ * including them roughly doubles contacts and adds wrong-facing normals; the
+ * floor fan alone puts dozens of triangles under a centred product.
  */
-export function isInsideBottle(
-  position: [number, number, number],
-  dims: BottleDimensions
-): boolean {
-  const [x, y, z] = position;
+export function buildBottleCollisionShell(
+  dims: BottleDimensions,
+  options: BuildBottleColliderOptions = {}
+): ColliderGeometry {
+  const shape = options.shape ?? 'boston-round';
+  const vertices: number[] = [];
+  const indices: number[] = [];
+
   const wt = dims.wallThickness;
-  const floorThickness = Math.max(wt * 3, 3);
-  const bodyR = dims.diameter / 2;
-  const neckR = dims.neckDiameter / 2;
-  const bodyH = dims.bodyHeight - dims.neckHeight;
-  const totalH = dims.bodyHeight;
-  
-  // Must be above floor slab
-  if (y < floorThickness) return false;
-  
-  // Must be below top (2% tolerance)
-  if (y > totalH * 1.02) return false;
-  
-  // Radial check
-  const horizontalDist = Math.sqrt(x * x + z * z);
-  const maxR = y < bodyH
-    ? bodyR - wt * 0.75
-    : neckR - wt * 0.75;
-  
-  return horizontalDist <= maxR;
+  const { rx: bodyOuterRx, rz: bodyOuterRz } = getBodyOuterRadii(dims, shape);
+  const bodyInnerRx = Math.max(bodyOuterRx - wt, 0.5);
+  const bodyInnerRz = Math.max(bodyOuterRz - wt, 0.5);
+  const neckOuterR = dims.neckDiameter / 2;
+  const neckInnerR = Math.max(neckOuterR - wt, 0.5);
+
+  const floorTopY = getFloorThickness(dims);
+  const shoulderHeight = getShoulderHeight(dims);
+  const shoulderStartY = dims.bodyHeight - dims.neckHeight - shoulderHeight;
+  const neckTopY = dims.bodyHeight;
+
+  // Start the wall slightly below the floor top so the seam can't leak
+  const wallBottomStart = vertices.length / 3;
+  generateRing(vertices, bodyInnerRx, bodyInnerRz, floorTopY - wt, SEGMENTS);
+  let prevStart = vertices.length / 3;
+  generateRing(vertices, bodyInnerRx, bodyInnerRz, shoulderStartY, SEGMENTS);
+  connectRings(indices, prevStart, wallBottomStart, SEGMENTS);
+
+  for (let step = 1; step <= SHOULDER_STEPS; step++) {
+    const t = step / SHOULDER_STEPS;
+    const ringY = shoulderStartY + shoulderHeight * (1 - Math.cos(t * (Math.PI / 2)));
+    const inner = shoulderRadiiAt(t, bodyInnerRx, bodyInnerRz, neckInnerR);
+    const start = vertices.length / 3;
+    generateRing(vertices, Math.max(inner.rx, 0.5), Math.max(inner.rz, 0.5), ringY, SEGMENTS);
+    connectRings(indices, start, prevStart, SEGMENTS);
+    prevStart = start;
+  }
+
+  const neckTopStart = vertices.length / 3;
+  generateRing(vertices, neckInnerR, neckInnerR, neckTopY, SEGMENTS);
+  connectRings(indices, neckTopStart, prevStart, SEGMENTS);
+
+  generateAnnulus(
+    vertices, indices,
+    neckInnerR, neckInnerR,
+    neckOuterR, neckOuterR,
+    neckTopY, SEGMENTS
+  );
+
+  return {
+    vertices: new Float32Array(vertices),
+    indices: new Uint32Array(indices),
+  };
+}
+
+/**
+ * Collision shell for a drawing profile: the cavity wall from the floor edge up
+ * the bore, plus the top rim. The floor is left to a box collider at
+ * `profile.inner[0][1]`.
+ */
+/**
+ * Inner wall from where it rises through the floor-box top (`inner[0][1]`).
+ * Push-up and heel geometry under that top is buried in the floor box, but its
+ * small triangles still sit within contact range of every resting piece and
+ * roughly doubled the cost of each physics step.
+ */
+function wallAboveFloor(inner: ProfilePoint[]): ProfilePoint[] {
+  const floorY = inner[0][1];
+  const k = inner.findIndex(([, y], i) => i > 0 && y >= floorY && inner[i - 1][1] < floorY);
+  if (k < 0) return inner.filter(([r]) => r > 0.01);
+  const [r0, y0] = inner[k - 1];
+  const [r1, y1] = inner[k];
+  const startR = r0 + ((r1 - r0) * (floorY - y0)) / (y1 - y0);
+  return [[startR, floorY], ...inner.slice(k)];
+}
+
+export function buildProfileCollisionShell(profile: DrawingProfile): ColliderGeometry {
+  const vertices: number[] = [];
+  const indices: number[] = [];
+  const wall = wallAboveFloor(profile.inner);
+  const t = profile.wallThickness;
+
+  const [firstR, firstY] = wall[0];
+  let prevStart = vertices.length / 3;
+  const ring = (r: number, y: number) => {
+    for (let i = 0; i < SEGMENTS; i++) {
+      const [x, z] = sectionPoint(profile.oval, r, y, (i / SEGMENTS) * Math.PI * 2, t);
+      vertices.push(x, y, z);
+    }
+  };
+  ring(firstR, firstY - t);
+  for (const [r, y] of wall) {
+    const start = vertices.length / 3;
+    ring(r, y);
+    connectRings(indices, start, prevStart, SEGMENTS);
+    prevStart = start;
+  }
+
+  const [boreR, topY] = wall[wall.length - 1];
+  const outerTopR = profile.outer.reduce(
+    (m, [r, y]) => (y >= topY - 3 ? Math.max(m, r) : m),
+    boreR
+  );
+  generateAnnulus(vertices, indices, boreR, boreR, outerTopR, outerTopR, topY, SEGMENTS);
+
+  return {
+    vertices: new Float32Array(vertices),
+    indices: new Uint32Array(indices),
+  };
+}
+
+/**
+ * Convenience builder from a full Bottle (shape-aware).
+ */
+export function buildBottleColliderFromBottle(bottle: Bottle): ColliderGeometry {
+  return buildBottleColliderGeometry(bottle.dimensions, { shape: bottle.shape });
 }

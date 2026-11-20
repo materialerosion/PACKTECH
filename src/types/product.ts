@@ -21,6 +21,10 @@ export interface Product {
   mass: number;         // grams
   color: string;
   volume: number;       // mm³ (calculated)
+  group?: string;          // Brand / family shown in the preset picker
+  massEstimated?: boolean; // Mass derived from density, not measured
+  specVolumeCc?: number;   // Supplier/spec CC value (L×W×H based), for reference
+  colorMix?: { name: string; color: string }[]; // Each fill piece gets one of these at random
 }
 
 // Product shape display names

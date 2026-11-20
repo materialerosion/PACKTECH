@@ -4,6 +4,7 @@
  */
 
 import { Bottle, BottleDimensions, BottleShape } from '@/types';
+import { profileCapacityMl, profileSurfaceAreaCm2 } from '@/services/drawingProfile';
 
 /**
  * Volume Calculation Engine
@@ -248,6 +249,7 @@ export class VolumeCalculator {
    * Main calculation dispatcher
    */
   static calculate(bottle: Bottle): number {
+    if (bottle.profile) return profileCapacityMl(bottle.profile);
     return this.calculateFromDimensions(bottle.shape, bottle.dimensions);
   }
   
@@ -278,6 +280,7 @@ export class VolumeCalculator {
    * Used for label sizing calculations
    */
   static calculateSurfaceArea(bottle: Bottle): number {
+    if (bottle.profile) return profileSurfaceAreaCm2(bottle.profile);
     const dims = bottle.dimensions;
     const bodyRadius = dims.diameter / 2;
     const bodyHeight = dims.bodyHeight - dims.neckHeight;

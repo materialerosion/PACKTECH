@@ -3,25 +3,43 @@
  * Renders a 3D bottle mesh based on bottle parameters
  */
 
-import { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { Bottle } from '@/types';
+import { Bottle, ClosureDrawing, CollarDrawing, DrawingProfile, LabelArtwork } from '@/types';
 import { useStore } from '@/store';
+import { profileTop, sectionPoint } from '@/services/drawingProfile';
+import {
+  createClosureGeometries,
+  createCollarGeometries,
+  createClosureTopTexture,
+  createFlipTopGeometries,
+  createLabelGeometry,
+  createProfileBodyGeometry,
+  createThreadGeometry,
+} from './drawingGeometry';
 
 interface Bottle3DProps {
   bottle: Bottle;
   position: [number, number, number];
   isSelected?: boolean;
   showMeasurements?: boolean;
+  /** Render as a faded ghost behind a hero bottle. */
+  dimmed?: boolean;
+  /** Replaces the default click behaviour (making the bottle the active library bottle). */
+  onSelect?: () => void;
 }
+
+const DIMMED_OPACITY = 0.12;
 
 export default function Bottle3D({ 
   bottle, 
   position, 
   isSelected = false,
-  showMeasurements = false 
+  showMeasurements = false,
+  dimmed = false,
+  onSelect,
 }: Bottle3DProps) {
   const meshRef = useRef<THREE.Group>(null);
   const { setActiveBottle } = useStore();
@@ -33,26 +51,32 @@ export default function Bottle3D({
     return generateBottleGeometry(bottle);
   }, [bottle.shape, dimensionsKey, bottle.capStyle]);
   
+  const opacity = dimmed ? DIMMED_OPACITY : bottle.opacity;
+
   // Materials
   const bodyMaterial = useMemo(() => {
     return new THREE.MeshPhysicalMaterial({
       color: bottle.bodyColor,
-      transparent: bottle.opacity < 1,
-      opacity: bottle.opacity,
+      transparent: opacity < 1,
+      opacity,
+      depthWrite: !dimmed,
       roughness: 0.2,
       metalness: 0,
       clearcoat: 0.3,
       clearcoatRoughness: 0.2,
     });
-  }, [bottle.bodyColor, bottle.opacity]);
+  }, [bottle.bodyColor, opacity, dimmed]);
   
   const capMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
       color: bottle.capColor,
+      transparent: dimmed,
+      opacity: dimmed ? DIMMED_OPACITY : 1,
+      depthWrite: !dimmed,
       roughness: 0.5,
       metalness: 0.1,
     });
-  }, [bottle.capColor]);
+  }, [bottle.capColor, dimmed]);
   
   // Selection highlight animation
   useFrame((state) => {
@@ -63,10 +87,53 @@ export default function Bottle3D({
   
   const handleClick = (e: any) => {
     e.stopPropagation?.();
-    setActiveBottle(bottle.id);
+    if (onSelect) {
+      onSelect();
+    } else {
+      setActiveBottle(bottle.id);
+    }
   };
   
   const dims = bottle.dimensions;
+
+  if (bottle.profile) {
+    return (
+      <group ref={meshRef} position={position} onClick={handleClick}>
+        <DrawingBottle
+          profile={bottle.profile}
+          closure={bottle.closure}
+          collar={bottle.collar}
+          label={bottle.label}
+          bodyColor={bottle.bodyColor}
+          capColor={bottle.capColor}
+          opacity={opacity}
+          dimmed={dimmed}
+        />
+        {isSelected && (
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[dims.diameter / 2 + 5, dims.diameter / 2 + 8, 32]} />
+            <meshBasicMaterial color="#3b82f6" transparent opacity={0.5} />
+          </mesh>
+        )}
+        {showMeasurements && (
+          <Html
+            center
+            position={[
+              0,
+              profileTop(bottle.profile) +
+                (bottle.closure ? bottle.closure.height - bottle.closure.skirtDepth : 0) +
+                20,
+              0,
+            ]}
+          >
+            <div className="bg-white/90 px-2 py-1 rounded shadow text-xs font-medium whitespace-nowrap">
+              {bottle.name}
+            </div>
+          </Html>
+        )}
+      </group>
+    );
+  }
   
   // Calculate body height used in geometry (body minus neck for shapes that include shoulder)
   const bodyOnlyHeight = dims.bodyHeight - dims.neckHeight;
@@ -94,7 +161,7 @@ export default function Bottle3D({
       <mesh
         geometry={bodyGeometry}
         material={bodyMaterial}
-        castShadow
+        castShadow={!dimmed}
         receiveShadow
         position={[0, 0, 0]}
       />
@@ -103,7 +170,7 @@ export default function Bottle3D({
       <mesh
         geometry={neckGeometry}
         material={bodyMaterial}
-        castShadow
+        castShadow={!dimmed}
         position={[0, bodyOnlyHeight, 0]}
       />
       
@@ -111,7 +178,7 @@ export default function Bottle3D({
       <mesh
         geometry={capGeometry}
         material={capMaterial}
-        castShadow
+        castShadow={!dimmed}
         position={[0, bodyOnlyHeight + dims.neckHeight + effectiveCapHeight / 2, 0]}
       />
       
@@ -124,7 +191,7 @@ export default function Bottle3D({
       )}
       
       {/* Label zones */}
-      {bottle.labelZones.map((zone) => (
+      {!dimmed && bottle.labelZones.map((zone) => (
         <mesh
           key={zone.id}
           position={[0, bodyOnlyHeight - zone.topOffset - zone.height / 2, 0]}
@@ -152,17 +219,297 @@ export default function Bottle3D({
       
       {/* Measurements overlay */}
       {showMeasurements && (
-        <Html position={[dims.diameter / 2 + 20, dims.height / 2, 0]}>
-          <div className="bg-white/90 px-2 py-1 rounded shadow text-xs whitespace-nowrap">
-            <div className="font-medium">{bottle.name}</div>
-            <div className="text-gray-600">
-              {bottle.volume.toFixed(1)} ml
-            </div>
-            <div className="text-gray-500">
-              H: {dims.height}mm × Ø{dims.diameter}mm
-            </div>
+        <Html
+          center
+          position={[0, bodyOnlyHeight + dims.neckHeight + effectiveCapHeight + 20, 0]}
+        >
+          <div className="bg-white/90 px-2 py-1 rounded shadow text-xs font-medium whitespace-nowrap">
+            {bottle.name}
           </div>
         </Html>
+      )}
+    </group>
+  );
+}
+
+/**
+ * Bottle traced from a drawing: revolved shell, helical thread, label panel
+ * edges, and the drawn closure seated on the finish.
+ */
+export function DrawingBottle({
+  profile,
+  closure,
+  collar,
+  label,
+  bodyColor,
+  capColor,
+  opacity,
+  dimmed,
+}: {
+  profile: DrawingProfile;
+  closure?: ClosureDrawing;
+  collar?: CollarDrawing;
+  label?: LabelArtwork;
+  bodyColor: string;
+  capColor: string;
+  opacity: number;
+  dimmed: boolean;
+}) {
+  const body = useMemo(() => createProfileBodyGeometry(profile), [profile]);
+  const thread = useMemo(() => createThreadGeometry(profile), [profile]);
+
+  // Satin blow-moulded HDPE rather than glossy plastic
+  const material = useMemo(
+    () =>
+      new THREE.MeshPhysicalMaterial({
+        color: bodyColor,
+        roughness: 0.55,
+        metalness: 0,
+        clearcoat: 0.05,
+        sheen: 0.3,
+        sheenRoughness: 0.8,
+        transparent: opacity < 1,
+        opacity,
+        depthWrite: !dimmed,
+        side: THREE.DoubleSide,
+      }),
+    [bodyColor, opacity, dimmed]
+  );
+
+  const labelEdges = useMemo(() => {
+    if (!profile.labelPanel || label) return [];
+    const r = profile.outer.reduce((m, [pr]) => Math.max(m, pr), 0) + 0.15;
+    const { bottomY, height } = profile.labelPanel;
+    return [bottomY, bottomY + height].map((y) => {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i < 96; i++) {
+        const [x, z] = sectionPoint(profile.oval, r, y, (i / 96) * Math.PI * 2);
+        pts.push(new THREE.Vector3(x, y, z));
+      }
+      return new THREE.BufferGeometry().setFromPoints(pts);
+    });
+  }, [profile, label]);
+
+  return (
+    <group>
+      <mesh geometry={body} material={material} castShadow={!dimmed} receiveShadow />
+      {thread && <mesh geometry={thread} material={material} castShadow={!dimmed} />}
+      {label && !profile.oval && <LabelModel profile={profile} label={label} opacity={opacity} dimmed={dimmed} />}
+      {!dimmed && labelEdges.map((geo, i) => (
+        <lineLoop key={i} geometry={geo}>
+          <lineBasicMaterial color="#94a3b8" transparent opacity={0.55} />
+        </lineLoop>
+      ))}
+      {collar && (
+        <group position={[0, collar.seatY, 0]}>
+          <CollarModel collar={collar} color={bodyColor} opacity={dimmed ? opacity : 1} />
+        </group>
+      )}
+      {closure && (
+        <group position={[0, profileTop(profile) - closure.skirtDepth, 0]}>
+          <ClosureModel closure={closure} color={capColor} opacity={dimmed ? opacity : 1} />
+        </group>
+      )}
+    </group>
+  );
+}
+
+/** Printed wrap label on the bottle wall. */
+function LabelModel({
+  profile,
+  label,
+  opacity,
+  dimmed,
+}: {
+  profile: DrawingProfile;
+  label: LabelArtwork;
+  opacity: number;
+  dimmed: boolean;
+}) {
+  const geometry = useMemo(() => createLabelGeometry(profile, label), [profile, label]);
+  const maxAnisotropy = useThree((s) => s.gl.capabilities.getMaxAnisotropy());
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    let current: THREE.Texture | null = null;
+    let cancelled = false;
+    new THREE.TextureLoader().load(label.imageUrl, (t) => {
+      if (cancelled) {
+        t.dispose();
+        return;
+      }
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = maxAnisotropy;
+      current = t;
+      setTexture(t);
+    });
+    return () => {
+      cancelled = true;
+      current?.dispose();
+    };
+  }, [label.imageUrl, maxAnisotropy]);
+
+  const gloss = label.finish !== 'matte';
+  const material = useMemo(
+    () =>
+      new THREE.MeshPhysicalMaterial({
+        map: texture,
+        // Rounded die-cut corners come through as transparent pixels
+        alphaTest: 0.5,
+        roughness: gloss ? 0.4 : 0.7,
+        clearcoat: gloss ? 0.45 : 0,
+        clearcoatRoughness: 0.22,
+        metalness: 0,
+        transparent: dimmed,
+        opacity: dimmed ? opacity : 1,
+        depthWrite: !dimmed,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+      }),
+    [texture, gloss, dimmed, opacity]
+  );
+
+  if (!texture) return null;
+  return <mesh geometry={geometry} material={material} castShadow={!dimmed} receiveShadow />;
+}
+
+/** Collar from a drawing, with y = 0 at its base. */
+function CollarModel({ collar, color, opacity }: { collar: CollarDrawing; color: string; opacity: number }) {
+  const parts = useMemo(() => createCollarGeometries(collar), [collar]);
+  // Seams at the base and top edge, so a white collar reads against a white bottle
+  const seams = useMemo(() => {
+    const a = collar.baseWidth / 2 + 0.15;
+    const b = collar.baseDepth / 2 + 0.15;
+    const r = collar.topDiameter / 2 + 0.1;
+    const base: THREE.Vector3[] = [];
+    const top: THREE.Vector3[] = [];
+    for (let i = 0; i < 96; i++) {
+      const t = (i / 96) * Math.PI * 2;
+      base.push(new THREE.Vector3(a * Math.cos(t), 0.05, b * Math.sin(t)));
+      top.push(new THREE.Vector3(r * Math.cos(t), collar.height, r * Math.sin(t)));
+    }
+    return [base, top].map((pts) => new THREE.BufferGeometry().setFromPoints(pts));
+  }, [collar]);
+  const faded = opacity < 1;
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color,
+        transparent: faded,
+        opacity,
+        depthWrite: !faded,
+        roughness: 0.45,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    [color, opacity, faded]
+  );
+  const gripMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color).multiplyScalar(0.85),
+        transparent: faded,
+        opacity,
+        depthWrite: !faded,
+        roughness: 0.7,
+        side: THREE.DoubleSide,
+      }),
+    [color, opacity, faded]
+  );
+  return (
+    <group>
+      <mesh geometry={parts.shell} material={material} castShadow={!faded} receiveShadow />
+      <mesh geometry={parts.grips} material={gripMaterial} castShadow={!faded} />
+      {!faded && seams.map((geo, i) => (
+        <lineLoop key={i} geometry={geo}>
+          <lineBasicMaterial color="#64748b" transparent opacity={0.7} />
+        </lineLoop>
+      ))}
+    </group>
+  );
+}
+
+/** Closure from a drawing, with y = 0 at the bottom of the skirt. */
+export function ClosureModel({
+  closure,
+  color,
+  opacity = 1,
+}: {
+  closure: ClosureDrawing;
+  color: string;
+  opacity?: number;
+}) {
+  const parts = useMemo(() => createClosureGeometries(closure), [closure]);
+  const flipTop = useMemo(() => createFlipTopGeometries(closure), [closure]);
+  const topTexture = useMemo(() => createClosureTopTexture(closure), [closure]);
+  const bottomEdge = useMemo(() => {
+    const r = closure.bottomDiameter / 2 + 0.1;
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i < 96; i++) {
+      const t = (i / 96) * Math.PI * 2;
+      pts.push(new THREE.Vector3(r * Math.cos(t), 0.05, r * Math.sin(t)));
+    }
+    return new THREE.BufferGeometry().setFromPoints(pts);
+  }, [closure]);
+  const faded = opacity < 1;
+  const glossy = closure.style === 'flip-top';
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color,
+        transparent: faded,
+        opacity,
+        depthWrite: !faded,
+        roughness: glossy ? 0.22 : 0.6,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    [color, opacity, faded, glossy]
+  );
+  const shadeMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color).multiplyScalar(0.78),
+        transparent: faded,
+        opacity,
+        depthWrite: !faded,
+        roughness: 0.5,
+        side: THREE.DoubleSide,
+      }),
+    [color, opacity, faded]
+  );
+
+  return (
+    <group>
+      <mesh geometry={parts.skirt} material={material} castShadow={!faded} receiveShadow />
+      <mesh geometry={parts.band} material={material} castShadow={!faded} />
+      <mesh geometry={parts.top} material={material} castShadow={!faded} receiveShadow />
+      {!faded && (
+        <lineLoop geometry={bottomEdge}>
+          <lineBasicMaterial color="#64748b" transparent opacity={0.6} />
+        </lineLoop>
+      )}
+      {flipTop && (
+        <>
+          <mesh geometry={flipTop.notch} material={shadeMaterial} />
+          <mesh geometry={flipTop.hinge} material={material} castShadow={!faded} />
+          {!faded && (
+            <lineLoop geometry={flipTop.partingLine}>
+              <lineBasicMaterial color="#64748b" transparent opacity={0.6} />
+            </lineLoop>
+          )}
+        </>
+      )}
+      {topTexture && !faded && (
+        <mesh geometry={parts.topPanel}>
+          <meshStandardMaterial
+            map={topTexture}
+            transparent
+            roughness={0.6}
+            polygonOffset
+            polygonOffsetFactor={-1}
+          />
+        </mesh>
       )}
     </group>
   );

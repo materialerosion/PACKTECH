@@ -15,17 +15,17 @@ import {
   GitCompare,
   Library,
   FileDown,
-  Droplets
+  ClipboardCheck
 } from 'lucide-react';
 import { AppTab } from '@/types';
 
 const tabs: { id: AppTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'lineup', label: 'Bottle / Cap Portfolio', icon: <LayoutGrid className="w-4 h-4" /> },
+  { id: 'fill', label: 'Headspace / Fill Simulator', icon: <ClipboardCheck className="w-4 h-4" /> },
   { id: 'generator', label: 'Bottle Generator', icon: <Beaker className="w-4 h-4" /> },
-  { id: 'lineup', label: 'Lineup Builder', icon: <LayoutGrid className="w-4 h-4" /> },
   { id: 'comparison', label: 'Compare', icon: <GitCompare className="w-4 h-4" /> },
   { id: 'presets', label: 'Presets', icon: <Library className="w-4 h-4" /> },
   { id: 'export', label: 'Export', icon: <FileDown className="w-4 h-4" /> },
-  { id: 'fill', label: 'Fill Simulator', icon: <Droplets className="w-4 h-4" /> },
 ];
 
 export default function Header() {
@@ -51,7 +51,7 @@ export default function Header() {
           <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center">
             <Beaker className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-lg text-gray-900">PACK2</span>
+          <span className="font-bold text-lg text-gray-900">PACKTECH</span>
         </div>
       </div>
       

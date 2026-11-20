@@ -9,6 +9,15 @@ import { PRODUCT_PRESETS, createProduct, calculateProductVolume } from '@/data/p
 import { useStore, useFillSimulation } from '@/store';
 import { ChevronUp } from 'lucide-react';
 
+export const PRESET_GROUPS: [string, { preset: Product; idx: number }[]][] = (() => {
+  const groups = new Map<string, { preset: Product; idx: number }[]>();
+  PRODUCT_PRESETS.forEach((preset, idx) => {
+    const group = preset.group ?? 'Generic';
+    groups.set(group, [...(groups.get(group) ?? []), { preset, idx }]);
+  });
+  return [...groups.entries()].sort(([a], [b]) => Number(a === 'Generic') - Number(b === 'Generic'));
+})();
+
 export default function ProductPresetSelector() {
   const { setFillProduct } = useStore();
   const fillSim = useFillSimulation();
@@ -67,10 +76,14 @@ export default function ProductPresetSelector() {
         className="input text-sm w-full"
       >
         <option value="" disabled>Select a product...</option>
-        {PRODUCT_PRESETS.map((preset, idx) => (
-          <option key={preset.id} value={idx}>
-            {preset.name} ({PRODUCT_SHAPE_NAMES[preset.shape]})
-          </option>
+        {PRESET_GROUPS.map(([group, presets]) => (
+          <optgroup key={group} label={group}>
+            {presets.map(({ preset, idx }) => (
+              <option key={preset.id} value={idx}>
+                {preset.name} ({PRODUCT_SHAPE_NAMES[preset.shape]})
+              </option>
+            ))}
+          </optgroup>
         ))}
         <option value="custom">── Custom Product ──</option>
       </select>
@@ -83,8 +96,24 @@ export default function ProductPresetSelector() {
             {fillSim.fillProduct.dimensions.length} × {fillSim.fillProduct.dimensions.width} × {fillSim.fillProduct.dimensions.height} mm
           </div>
           <div className="text-gray-500">
-            Mass: {fillSim.fillProduct.mass}g · Vol: {fillSim.fillProduct.volume.toFixed(1)} mm³
+            Mass: {fillSim.fillProduct.mass}g{fillSim.fillProduct.massEstimated ? ' (est.)' : ''} · Vol: {fillSim.fillProduct.volume.toFixed(1)} mm³
           </div>
+          {fillSim.fillProduct.colorMix && (
+            <div className="flex flex-wrap items-center gap-2 text-gray-500">
+              <span>Random mix:</span>
+              {fillSim.fillProduct.colorMix.map((c) => (
+                <span key={c.name} className="flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full border border-gray-300" style={{ backgroundColor: c.color }} />
+                  {c.name}
+                </span>
+              ))}
+            </div>
+          )}
+          {fillSim.fillProduct.specVolumeCc !== undefined && (
+            <div className="text-gray-400">
+              Spec CC (L×W×H): {fillSim.fillProduct.specVolumeCc}
+            </div>
+          )}
         </div>
       )}
       

@@ -1,6 +1,6 @@
 /**
  * Main Application Component
- * PACK2 - Pharmaceutical Packaging Design Application
+ * PACKTECH - Pharmaceutical Packaging Design Application
  */
 
 import { useEffect } from 'react';

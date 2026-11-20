@@ -4,12 +4,25 @@
  * Renders the appropriate mesh shape and collider based on product type.
  */
 
-import { useRef } from 'react';
-import { RigidBody, CuboidCollider, CylinderCollider, CapsuleCollider } from '@react-three/rapier';
-import type { RapierRigidBody } from '@react-three/rapier';
+import { memo, useMemo, useState } from 'react';
+import {
+  RigidBody,
+  CuboidCollider,
+  RoundCuboidCollider,
+  CylinderCollider,
+  CapsuleCollider,
+  BallCollider,
+  ConvexHullCollider,
+} from '@react-three/rapier';
+import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import { Product } from '@/types/product';
-import { getProductColliderParams, getProductMeshParams, getProductColor } from '@/services/fillSimulationService';
+import {
+  getProductColliderParams,
+  getProductMeshParams,
+  getProductColor,
+  ColliderPart,
+} from '@/services/fillSimulationService';
 
 interface ProductBodyProps {
   product: Product;
@@ -20,7 +33,83 @@ interface ProductBodyProps {
   id: string;
 }
 
-export default function ProductBody({
+const COLLIDER_FRICTION = 0.4;
+
+/** Random but stable per piece, so a piece keeps its color across re-renders. */
+function pieceColor(product: Product, id: string): string {
+  const mix = product.colorMix;
+  if (!mix?.length) return product.color;
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+  }
+  return mix[(hash >>> 0) % mix.length].color;
+}
+const COLLIDER_RESTITUTION = 0.05;
+
+function renderColliderPart(part: ColliderPart, key: string) {
+  const common = {
+    friction: COLLIDER_FRICTION,
+    restitution: COLLIDER_RESTITUTION,
+    position: part.position,
+    rotation: part.rotation,
+  };
+  
+  switch (part.type) {
+    case 'cylinder':
+      return (
+        <CylinderCollider
+          key={key}
+          {...common}
+          args={[part.args[0], part.args[1]]}
+        />
+      );
+    case 'capsule':
+      return (
+        <CapsuleCollider
+          key={key}
+          {...common}
+          args={[part.args[0], part.args[1]]}
+        />
+      );
+    case 'cuboid':
+      return (
+        <CuboidCollider
+          key={key}
+          {...common}
+          args={[part.args[0], part.args[1], part.args[2]]}
+        />
+      );
+    case 'round-cuboid':
+      return (
+        <RoundCuboidCollider
+          key={key}
+          {...common}
+          args={[part.args[0], part.args[1], part.args[2], part.args[3]]}
+        />
+      );
+    case 'ball':
+      return (
+        <BallCollider
+          key={key}
+          {...common}
+          args={[part.args[0]]}
+        />
+      );
+    case 'convex':
+      return (
+        <ConvexHullCollider
+          key={key}
+          {...common}
+          args={[new Float32Array(part.args)]}
+        />
+      );
+    default:
+      return null;
+  }
+}
+
+function ProductBody({
   product,
   position,
   rotation,
@@ -28,49 +117,41 @@ export default function ProductBody({
   isComplete,
   id,
 }: ProductBodyProps) {
-  const rigidBodyRef = useRef<RapierRigidBody>(null);
+  // Physics owns the transform after spawn; later prop updates must not teleport the body
+  const [initialPose] = useState(() => ({ position, rotation }));
   
-  const colliderParams = getProductColliderParams(product);
-  const meshParams = getProductMeshParams(product);
-  const color = getProductColor(product.color, isInside, isComplete);
+  const colliderParams = useMemo(() => getProductColliderParams(product), [product]);
+  const meshParams = useMemo(() => getProductMeshParams(product), [product]);
+  const userData = useMemo(() => ({ productId: id }), [id]);
+  const color = getProductColor(pieceColor(product, id), isInside, isComplete);
+  const { length, width, height } = product.dimensions;
   
   return (
     <RigidBody
-      ref={rigidBodyRef}
-      position={position}
-      quaternion={rotation}
+      position={initialPose.position}
+      quaternion={initialPose.rotation}
       colliders={false}
       type="dynamic"
       mass={product.mass}
-      linearDamping={0.5}
-      angularDamping={0.5}
-      name={id}
+      linearDamping={0.4}
+      angularDamping={0.4}
+      ccd={true}
+      userData={userData}
     >
-      {/* Collider */}
-      {colliderParams.type === 'cylinder' && (
-        <CylinderCollider
-          args={[colliderParams.args[0], colliderParams.args[1]]}
-          friction={0.4}
-          restitution={0.05}
-        />
-      )}
-      {colliderParams.type === 'capsule' && (
-        <CapsuleCollider
-          args={[colliderParams.args[0], colliderParams.args[1]]}
-          friction={0.4}
-          restitution={0.05}
-        />
-      )}
-      {colliderParams.type === 'cuboid' && (
-        <CuboidCollider
-          args={[colliderParams.args[0], colliderParams.args[1], colliderParams.args[2]]}
-          friction={0.4}
-          restitution={0.05}
-        />
-      )}
+      {colliderParams.parts.map((part, i) => renderColliderPart(part, `${id}-col-${i}`))}
       
-      {/* Visual mesh - standard shapes */}
-      {product.shape !== 'dome' && (
+      {meshParams.geometryType === 'rounded-box' && (
+        <RoundedBox
+          args={[meshParams.args[0], meshParams.args[1], meshParams.args[2]]}
+          radius={meshParams.args[3]}
+          smoothness={2}
+          castShadow
+        >
+          <meshStandardMaterial color={color} roughness={0.4} metalness={0.1} />
+        </RoundedBox>
+      )}
+
+      {product.shape !== 'dome' && meshParams.geometryType !== 'rounded-box' && (
         <mesh castShadow>
           {meshParams.geometryType === 'cylinder' && (
             <cylinderGeometry args={meshParams.args as [number, number, number, number]} />
@@ -89,12 +170,11 @@ export default function ProductBody({
         </mesh>
       )}
       
-      {/* Dome shape: half-sphere + flat base disc */}
+      {/* Dome: unit half-sphere + base disc scaled to length × height × width */}
       {product.shape === 'dome' && (
-        <group>
-          {/* Half-sphere top */}
+        <group scale={[length / 2, height, width / 2]}>
           <mesh castShadow>
-            <sphereGeometry args={[product.dimensions.length / 2, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <sphereGeometry args={[1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
             <meshStandardMaterial
               color={color}
               roughness={0.4}
@@ -102,9 +182,8 @@ export default function ProductBody({
               side={THREE.DoubleSide}
             />
           </mesh>
-          {/* Flat base disc */}
           <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[product.dimensions.length / 2, 16]} />
+            <circleGeometry args={[1, 16]} />
             <meshStandardMaterial
               color={color}
               roughness={0.4}
@@ -117,3 +196,12 @@ export default function ProductBody({
     </RigidBody>
   );
 }
+
+export default memo(
+  ProductBody,
+  (prev, next) =>
+    prev.id === next.id &&
+    prev.product === next.product &&
+    prev.isInside === next.isInside &&
+    prev.isComplete === next.isComplete
+);

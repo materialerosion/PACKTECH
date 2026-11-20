@@ -4,20 +4,109 @@
  * Renders the bottle as a transparent static collider and products as dynamic bodies.
  */
 
-import { useMemo, Suspense } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Environment, PerspectiveCamera, Grid } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
+import { useMemo, useRef, Suspense, MutableRefObject } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera, Grid } from '@react-three/drei';
+import { Physics, RigidBody, CuboidCollider, useRapier } from '@react-three/rapier';
 import { useStore, useFillSimulation } from '@/store';
 import BottleCollider from './BottleCollider';
 import ProductBody from './ProductBody';
 import SimulationController from './SimulationController';
+import { useSimSpeed } from './simSpeed';
 import { Droplets } from 'lucide-react';
+import * as THREE from 'three';
+import { Bottle } from '@/types/bottle';
+import { radiusAt, sectionPoint } from '@/services/drawingProfile';
+
+const PHYSICS_TIME_STEP = 1 / 60;
+const PHYSICS_ALLOWED_LINEAR_ERROR = 0.0002; // × lengthUnit = 0.2 mm
+const PHYSICS_SOLVER_ITERATIONS = 8;
+const PHYSICS_CONTACT_FREQUENCY = 90; // Hz
+const MAX_PHYSICS_FRAME_DELTA = 1 / 30;
+const PHYSICS_FRAME_BUDGET_MS = 10;
+const FAST_PHYSICS_FRAME_BUDGET_MS = 14;
+/** Fraction of the product's thinnest dimension a body may travel per step before CCD is needed. */
+const CCD_TRAVEL_FRACTION = 0.25;
+
+/**
+ * Drives the (paused) physics world in fixed steps within a per-frame time
+ * budget. The built-in loop catches up up to 0.5 s per frame, which spirals
+ * into ~1 fps once a step costs more than the time it simulates; here a heavy
+ * pile plays in slow motion instead. Advances timeRef by simulated seconds.
+ */
+function BudgetedPhysicsStepper({
+  timeRef,
+  ccdSpeed,
+}: {
+  timeRef: MutableRefObject<number>;
+  /** mm/s above which a dynamic body gets CCD; on a resting pile CCD costs much and prevents nothing. */
+  ccdSpeed: number;
+}) {
+  const { step, world } = useRapier();
+  const accumulator = useRef(0);
+  useFrame((_, delta) => {
+    const speed = useSimSpeed.getState().speed;
+    const budget = speed > 1 ? FAST_PHYSICS_FRAME_BUDGET_MS : PHYSICS_FRAME_BUDGET_MS;
+    accumulator.current += Math.min(delta, MAX_PHYSICS_FRAME_DELTA) * speed;
+    const start = performance.now();
+    while (accumulator.current >= PHYSICS_TIME_STEP) {
+      world.bodies.forEach((body) => {
+        if (!body.isDynamic()) return;
+        const v = body.linvel();
+        const fast = v.x * v.x + v.y * v.y + v.z * v.z > ccdSpeed * ccdSpeed;
+        if (body.isCcdEnabled() !== fast) body.enableCcd(fast);
+      });
+      step(PHYSICS_TIME_STEP);
+      accumulator.current -= PHYSICS_TIME_STEP;
+      timeRef.current += PHYSICS_TIME_STEP;
+      if (performance.now() - start > budget) {
+        accumulator.current = 0;
+        break;
+      }
+    }
+  });
+  return null;
+}
+
+/** Translucent disc and ring at the settled fill height. */
+function FillLine({ bottle, height }: { bottle: Bottle; height: number }) {
+  const radius = bottle.profile
+    ? radiusAt(bottle.profile.inner, height)
+    : bottle.dimensions.diameter / 2 - (bottle.dimensions.wallThickness ?? 1);
+  if (radius <= 0) return null;
+  const oval = bottle.profile?.oval;
+  const outline = (r: number) =>
+    Array.from({ length: 64 }, (_, i) => {
+      const [x, z] = sectionPoint(oval, r, height, (i / 64) * Math.PI * 2, bottle.profile?.wallThickness);
+      return new THREE.Vector2(x, -z);
+    });
+  const disc = new THREE.Shape(outline(radius));
+  const ring = new THREE.Shape(outline(radius));
+  ring.holes.push(new THREE.Path(outline(radius - 0.6).reverse()));
+  return (
+    <group position={[0, height, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh renderOrder={2}>
+        <shapeGeometry args={[disc]} />
+        <meshBasicMaterial color="#2563eb" transparent opacity={0.18} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh renderOrder={3}>
+        <shapeGeometry args={[ring]} />
+        <meshBasicMaterial color="#1d4ed8" transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
 
 export default function FillScene3D() {
   const { ui } = useStore();
   const fillSim = useFillSimulation();
   const { fillBottle, fillProduct, status, productBodies } = fillSim;
+  const physicsTimeRef = useRef(0);
+  const ccdSpeed = fillProduct
+    ? (Math.min(fillProduct.dimensions.length, fillProduct.dimensions.width, fillProduct.dimensions.height) *
+        CCD_TRAVEL_FRACTION) /
+      PHYSICS_TIME_STEP
+    : 0;
   
   const isComplete = status === 'complete';
   
@@ -45,7 +134,7 @@ export default function FillScene3D() {
           <Droplets className="w-16 h-16 mx-auto mb-4 opacity-30" />
           <p className="text-lg font-medium">No bottle loaded</p>
           <p className="text-sm mt-2">
-            Send a bottle from the Bottle Generator or Library to begin
+            Pick a portfolio and bottle in the sidebar to begin
           </p>
         </div>
       </div>
@@ -68,15 +157,14 @@ export default function FillScene3D() {
         
         {/* Lighting */}
         <ambientLight intensity={0.6} />
+        <hemisphereLight args={['#ffffff', '#cbd5e1', 0.6]} />
         <directionalLight
           position={[100, 200, 100]}
           intensity={1}
           castShadow
-          shadow-mapSize={[2048, 2048]}
+          shadow-mapSize={[1024, 1024]}
         />
         <directionalLight position={[-100, 100, -100]} intensity={0.3} />
-        
-        <Environment preset="studio" />
         
         {/* Grid */}
         {ui.showGrid && (
@@ -95,19 +183,35 @@ export default function FillScene3D() {
           />
         )}
         
+        {isComplete && fillSim.results?.headspace && (
+          <FillLine bottle={fillBottle} height={fillSim.results.headspace.fillHeightMm} />
+        )}
+
         {/* Ground plane for catching fallen products */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1, 0]} receiveShadow>
           <planeGeometry args={[500, 500]} />
           <meshStandardMaterial color="#f1f5f9" transparent opacity={0.5} />
         </mesh>
         
-        {/* Physics world */}
+        {/* Physics world — mm units (lengthUnit=1000 ⇒ 1 unit = 1 mm) */}
         <Suspense fallback={null}>
           <Physics
             gravity={[0, -9810, 0]}
-            timeStep={1 / 240}
-            interpolate={true}
+            timeStep={PHYSICS_TIME_STEP}
+            paused
+            interpolate={false}
+            // allowedLinearError and predictionDistance are normalized and
+            // multiplied by lengthUnit. The defaults (1 mm error, 30 Hz) let
+            // loaded pieces sink 2-4 mm into ~1 mm walls and into each other,
+            // compressing the pile; these keep overlap under the wall thickness.
+            lengthUnit={1000}
+            allowedLinearError={PHYSICS_ALLOWED_LINEAR_ERROR}
+            numSolverIterations={PHYSICS_SOLVER_ITERATIONS}
+            contactNaturalFrequency={PHYSICS_CONTACT_FREQUENCY}
+            maxCcdSubsteps={4}
           >
+            <BudgetedPhysicsStepper timeRef={physicsTimeRef} ccdSpeed={ccdSpeed} />
+            
             {/* Static bottle collider */}
             <BottleCollider bottle={fillBottle} />
             
@@ -124,11 +228,17 @@ export default function FillScene3D() {
               />
             ))}
             
-            {/* Ground collider to catch fallen products */}
-            {/* Using a simple invisible floor */}
+            {/* Physics ground to catch overflowed products */}
+            <RigidBody type="fixed" colliders={false} position={[0, -1, 0]}>
+              <CuboidCollider
+                args={[250, 0.5, 250]}
+                friction={0.8}
+                restitution={0.02}
+              />
+            </RigidBody>
             
             {/* Simulation controller (no visual output) */}
-            <SimulationController />
+            <SimulationController physicsTimeRef={physicsTimeRef} />
           </Physics>
         </Suspense>
       </Canvas>

@@ -1,6 +1,6 @@
 /**
  * Zustand Store
- * Central state management for the PACK2 application
+ * Central state management for the PACKTECH application
  */
 
 import { create } from 'zustand';
@@ -24,11 +24,13 @@ import {
   BottleSeries,
   SeriesComparison,
   GenerationConfig,
+  DEFAULT_GENERATION_CONFIG,
   Product,
 } from '@/types';
 import { VolumeCalculator } from '@/services/volumeCalculator';
 import { BottleGenerationService } from '@/services/bottleGenerationService';
 import { ComparisonService } from '@/services/comparisonService';
+import { HeadspaceResult } from '@/services/headspaceService';
 
 // ─── Fill Simulation Types ────────────────────────────────────────────
 
@@ -51,10 +53,29 @@ export interface FillSimulationResult {
   totalProductVolume: number;
   simulationTime: number;     // seconds
   productPositions: ProductBodyState[];
+  headspace?: HeadspaceResult;
+}
+
+/** A saved headspace run for one portfolio bottle. */
+export interface HeadspaceAssessment {
+  id: string;
+  date: string;
+  seriesId: string | null;
+  seriesName: string | null;
+  bottleId: string;
+  bottleName: string;
+  productName: string;
+  productColor: string;
+  targetQuantity: number;
+  actualQuantity: number;
+  headspace: HeadspaceResult;
+  notes: string;
 }
 
 export interface FillSimulationState {
   fillBottle: Bottle | null;
+  /** Portfolio the fill bottle was picked from, if any */
+  sourceSeriesId: string | null;
   fillProduct: Product | null;
   targetQuantity: number;
   status: FillSimStatus;
@@ -86,6 +107,7 @@ interface AppState {
   
   // Fill Simulation
   fillSimulation: FillSimulationState;
+  assessments: HeadspaceAssessment[];
   
   // UI State
   ui: UIState;
@@ -120,6 +142,7 @@ interface AppActions {
   toggleGrid: () => void;
   toggleMeasurements: () => void;
   setViewMode: (mode: ViewMode) => void;
+  setHeroBottle: (id: string | null) => void;
   selectBottle: (id: string, multi?: boolean) => void;
   clearSelection: () => void;
   setLoading: (loading: boolean) => void;
@@ -136,6 +159,9 @@ interface AppActions {
   updateBottleInSeries: (seriesId: string, bottleIndex: number, updates: Partial<Bottle>) => void;
   batchUpdateBottlesInSeries: (seriesId: string, bottleIndices: number[], updates: Partial<Bottle>) => void;
   regenerateSeries: (seriesId: string, config: GenerationConfig) => void;
+  createPortfolio: (name: string) => string;
+  addBottleToSeries: (seriesId: string, bottle: Bottle) => string | null;
+  removeBottleFromSeries: (seriesId: string, bottleId: string) => void;
   
   // Series Comparison actions
   createSeriesComparison: (series1Id: string, series2Id: string) => string | null;
@@ -144,7 +170,9 @@ interface AppActions {
   setActiveSeriesComparison: (id: string | null) => void;
   
   // Fill Simulation actions
-  sendBottleToFill: (bottle: Bottle) => void;
+  sendBottleToFill: (bottle: Bottle, seriesId?: string | null) => void;
+  saveAssessment: (notes?: string) => string | null;
+  deleteAssessment: (id: string) => void;
   setFillProduct: (product: Product) => void;
   setTargetQuantity: (qty: number) => void;
   startFillSimulation: () => void;
@@ -162,6 +190,22 @@ interface AppActions {
 type Store = AppState & AppActions;
 
 // Initial state
+/**
+ * Apply edits to a bottle in place. Hand edits to dimensions or shape replace
+ * drawing-based geometry, which can't follow parametric changes.
+ */
+function applyBottleUpdates(bottle: Bottle, updates: Partial<Bottle>) {
+  Object.assign(bottle, updates);
+  if ((updates.dimensions || updates.shape) && !updates.profile) {
+    delete bottle.profile;
+  }
+  bottle.updatedAt = new Date();
+  if (updates.dimensions || updates.shape || updates.profile) {
+    bottle.volume = VolumeCalculator.calculate(bottle);
+    bottle.surfaceArea = VolumeCalculator.calculateSurfaceArea(bottle);
+  }
+}
+
 const initialState: AppState = {
   bottles: {},
   activeBottleId: null,
@@ -173,6 +217,7 @@ const initialState: AppState = {
   activeSeriesComparisonId: null,
   fillSimulation: {
     fillBottle: null,
+    sourceSeriesId: null,
     fillProduct: null,
     targetQuantity: 50,
     status: 'idle',
@@ -183,13 +228,15 @@ const initialState: AppState = {
     results: null,
     productBodies: [],
   },
+  assessments: [],
   ui: {
     sidebarOpen: true,
-    activeTab: 'generator',
+    activeTab: 'lineup',
     showGrid: true,
     showMeasurements: true,
     viewMode: '3d',
     selectedBottleIds: [],
+    heroBottleId: null,
     isLoading: false,
     error: null,
   },
@@ -258,14 +305,7 @@ export const useStore = create<Store>()(
       updateBottle: (id, updates) => {
         set((state) => {
           if (state.bottles[id]) {
-            Object.assign(state.bottles[id], updates);
-            state.bottles[id].updatedAt = new Date();
-            
-            // Recalculate volume if dimensions changed
-            if (updates.dimensions || updates.shape) {
-              state.bottles[id].volume = VolumeCalculator.calculate(state.bottles[id]);
-              state.bottles[id].surfaceArea = VolumeCalculator.calculateSurfaceArea(state.bottles[id]);
-            }
+            applyBottleUpdates(state.bottles[id], updates);
           }
         });
       },
@@ -447,6 +487,13 @@ export const useStore = create<Store>()(
       setActiveTab: (tab) => {
         set((state) => {
           state.ui.activeTab = tab;
+          state.ui.heroBottleId = null;
+        });
+      },
+      
+      setHeroBottle: (id) => {
+        set((state) => {
+          state.ui.heroBottleId = id;
         });
       },
       
@@ -564,6 +611,7 @@ export const useStore = create<Store>()(
       setActiveSeries: (id) => {
         set((state) => {
           state.activeSeriesId = id;
+          state.ui.heroBottleId = null;
         });
       },
       
@@ -571,15 +619,7 @@ export const useStore = create<Store>()(
         set((state) => {
           const series = state.bottleSeries[seriesId];
           if (series && series.bottles[bottleIndex]) {
-            Object.assign(series.bottles[bottleIndex], updates);
-            series.bottles[bottleIndex].updatedAt = new Date();
-            
-            // Recalculate volume if dimensions changed
-            if (updates.dimensions || updates.shape) {
-              series.bottles[bottleIndex].volume = VolumeCalculator.calculate(series.bottles[bottleIndex]);
-              series.bottles[bottleIndex].surfaceArea = VolumeCalculator.calculateSurfaceArea(series.bottles[bottleIndex]);
-            }
-            
+            applyBottleUpdates(series.bottles[bottleIndex], updates);
             series.updatedAt = new Date();
           }
         });
@@ -591,13 +631,7 @@ export const useStore = create<Store>()(
           if (series) {
             for (const index of bottleIndices) {
               if (series.bottles[index]) {
-                Object.assign(series.bottles[index], updates);
-                series.bottles[index].updatedAt = new Date();
-                
-                if (updates.dimensions || updates.shape) {
-                  series.bottles[index].volume = VolumeCalculator.calculate(series.bottles[index]);
-                  series.bottles[index].surfaceArea = VolumeCalculator.calculateSurfaceArea(series.bottles[index]);
-                }
+                applyBottleUpdates(series.bottles[index], updates);
               }
             }
             series.updatedAt = new Date();
@@ -614,6 +648,50 @@ export const useStore = create<Store>()(
             series.bottles = bottles;
             series.updatedAt = new Date();
           }
+        });
+      },
+
+      createPortfolio: (name) => {
+        const id = uuidv4();
+        const now = new Date();
+        set((state) => {
+          state.bottleSeries[id] = {
+            id,
+            name,
+            description: '',
+            config: { ...DEFAULT_GENERATION_CONFIG, bottleCount: 0 },
+            bottles: [],
+            createdAt: now,
+            updatedAt: now,
+            category: 'portfolio',
+          };
+          state.activeSeriesId = id;
+          state.ui.heroBottleId = null;
+        });
+        return id;
+      },
+
+      addBottleToSeries: (seriesId, bottle) => {
+        if (!get().bottleSeries[seriesId]) return null;
+        const id = uuidv4();
+        const now = new Date();
+        set((state) => {
+          const series = state.bottleSeries[seriesId];
+          const copy: Bottle = { ...JSON.parse(JSON.stringify(bottle)), id, createdAt: now, updatedAt: now };
+          series.bottles.push(copy);
+          series.bottles.sort((a, b) => a.volume - b.volume);
+          series.updatedAt = now;
+        });
+        return id;
+      },
+
+      removeBottleFromSeries: (seriesId, bottleId) => {
+        set((state) => {
+          const series = state.bottleSeries[seriesId];
+          if (!series) return;
+          series.bottles = series.bottles.filter((b) => b.id !== bottleId);
+          series.updatedAt = new Date();
+          if (state.ui.heroBottleId === bottleId) state.ui.heroBottleId = null;
         });
       },
       
@@ -659,10 +737,11 @@ export const useStore = create<Store>()(
       },
       
       // Fill Simulation actions
-      sendBottleToFill: (bottle) => {
+      sendBottleToFill: (bottle, seriesId = null) => {
         set((state) => {
           // Deep copy the bottle
           state.fillSimulation.fillBottle = JSON.parse(JSON.stringify(bottle));
+          state.fillSimulation.sourceSeriesId = seriesId;
           state.fillSimulation.status = 'configuring';
           state.fillSimulation.droppedCount = 0;
           state.fillSimulation.insideCount = 0;
@@ -730,6 +809,37 @@ export const useStore = create<Store>()(
           state.fillSimulation.status = 'complete';
         });
       },
+
+      saveAssessment: (notes = '') => {
+        const { fillSimulation: f, bottleSeries } = get();
+        if (!f.fillBottle || !f.fillProduct || !f.results?.headspace) return null;
+        const id = uuidv4();
+        const series = f.sourceSeriesId ? bottleSeries[f.sourceSeriesId] : undefined;
+        const assessment: HeadspaceAssessment = {
+          id,
+          date: new Date().toISOString(),
+          seriesId: series?.id ?? null,
+          seriesName: series?.name ?? null,
+          bottleId: f.fillBottle.id,
+          bottleName: f.fillBottle.name,
+          productName: f.fillProduct.name,
+          productColor: f.fillProduct.color,
+          targetQuantity: f.results.targetQuantity,
+          actualQuantity: f.results.actualQuantity,
+          headspace: { ...f.results.headspace },
+          notes,
+        };
+        set((state) => {
+          state.assessments.push(assessment);
+        });
+        return id;
+      },
+
+      deleteAssessment: (id) => {
+        set((state) => {
+          state.assessments = state.assessments.filter((a) => a.id !== id);
+        });
+      },
       
       // Utility actions
       getBottlesForLineup: (lineupId) => {
@@ -760,6 +870,7 @@ export const useStore = create<Store>()(
         lineups: state.lineups,
         bottleSeries: state.bottleSeries,
         seriesComparisons: state.seriesComparisons,
+        assessments: state.assessments,
         settings: state.settings,
       }),
     }

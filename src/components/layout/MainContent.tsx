@@ -4,11 +4,14 @@
  * bottle library, generated bottles display, and comparison views.
  */
 
-import React, { Suspense, lazy, useState, useCallback, useEffect, useRef } from 'react';
-import { useStore, useActiveSeries, useActiveSeriesComparison } from '@/store';
+import React, { Suspense, lazy, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useStore, useActiveSeries } from '@/store';
+import { ComparisonService } from '@/services/comparisonService';
+import { useCompareSelection } from '../comparison-mode/compareSelection';
 import BottleLibrary from '../bottle-generator/BottleLibrary';
 import LineupShelf from '../lineup-builder/LineupShelf';
 import GeneratedBottlesDisplay from '../lineup-builder/GeneratedBottlesDisplay';
+import PortfolioEvaluation from '../fill-simulator/PortfolioEvaluation';
 
 // Lazy load heavy components for better initial load performance
 const Scene3D = lazy(() => import('../3d/Scene3D'));
@@ -16,6 +19,7 @@ const FillScene3D = lazy(() => import('../fill-simulator/FillScene3D'));
 const ComparisonChart = lazy(() => import('../comparison-mode/ComparisonChart'));
 const ComparisonTable = lazy(() => import('../comparison-mode/ComparisonTable'));
 const AnalysisReport = lazy(() => import('../comparison-mode/AnalysisReport'));
+const PortfolioDimensionComparison = lazy(() => import('../comparison-mode/PortfolioDimensionComparison'));
 
 const MIN_PANEL_HEIGHT = 120;
 const MAX_PANEL_HEIGHT = 500;
@@ -24,7 +28,6 @@ const DEFAULT_PANEL_HEIGHT = 192; // equivalent to h-48
 export default function MainContent() {
   const { ui, bottleSeries } = useStore();
   const activeSeries = useActiveSeries();
-  const activeComparison = useActiveSeriesComparison();
 
   // Resizable bottom panel state
   const [panelHeight, setPanelHeight] = useState(DEFAULT_PANEL_HEIGHT);
@@ -65,11 +68,29 @@ export default function MainContent() {
     };
   }, []);
 
-  // Resolve comparison series
-  const compSeries1 = activeComparison ? bottleSeries[activeComparison.series1Id] : null;
-  const compSeries2 = activeComparison ? bottleSeries[activeComparison.series2Id] : null;
+  // Portfolios picked in the Compare tab
+  const { A, B, units, view } = useCompareSelection();
+  const picked = useMemo(
+    () =>
+      [A, B].flatMap((pick, side) => {
+        const series = bottleSeries[pick.portfolioId];
+        if (!series) return [];
+        const bottles = pick.bottleIds
+          ? series.bottles.filter((b) => pick.bottleIds!.includes(b.id))
+          : series.bottles;
+        return bottles.length ? [{ series: { ...series, bottles }, side }] : [];
+      }),
+    [A, B, bottleSeries]
+  );
+  const compareSides = useMemo(() => picked.map((p) => p.series), [picked]);
+  const compareSideIndex = useMemo(() => picked.map((p) => p.side), [picked]);
+  const [compSeries1, compSeries2] = compareSides;
+  const coverage = useMemo(
+    () => (compSeries1 && compSeries2 ? ComparisonService.compareSeries(compSeries1, compSeries2) : null),
+    [compSeries1, compSeries2]
+  );
 
-  const isComparisonView = ui.activeTab === 'comparison' && activeComparison && compSeries1 && compSeries2;
+  const isComparisonView = ui.activeTab === 'comparison' && compareSides.length > 0;
   const isFillView = ui.activeTab === 'fill';
 
   return (
@@ -80,21 +101,19 @@ export default function MainContent() {
           /* Comparison view replaces 3D viewport */
           <Suspense fallback={<LoadingSpinner />}>
             <div className="w-full h-full overflow-auto p-6 space-y-6">
-              <ComparisonChart
-                series1={compSeries1}
-                series2={compSeries2}
-                comparison={activeComparison}
-              />
-              <ComparisonTable
-                series1={compSeries1}
-                series2={compSeries2}
-                comparison={activeComparison}
-              />
-              <AnalysisReport
-                series1={compSeries1}
-                series2={compSeries2}
-                comparison={activeComparison}
-              />
+              {view === 'dimensions' ? (
+                <PortfolioDimensionComparison sides={compareSides} sideIndex={compareSideIndex} units={units} />
+              ) : !coverage || !compSeries1 || !compSeries2 ? (
+                <div className="text-sm text-gray-500 text-center py-12">
+                  Fill coverage needs bottles picked on both sides.
+                </div>
+              ) : (
+                <>
+                  <ComparisonChart series1={compSeries1} series2={compSeries2} comparison={coverage} />
+                  <ComparisonTable series1={compSeries1} series2={compSeries2} comparison={coverage} />
+                  <AnalysisReport series1={compSeries1} series2={compSeries2} comparison={coverage} />
+                </>
+              )}
             </div>
           </Suspense>
         ) : isFillView ? (
@@ -125,7 +144,7 @@ export default function MainContent() {
       </div>
 
       {/* Bottom panel - context-dependent, resizable */}
-      {!isComparisonView && !isFillView && (
+      {!isComparisonView && (
         <div className="flex flex-col flex-shrink-0" style={{ height: `${panelHeight}px` }}>
           {/* Resize handle */}
           <div
@@ -136,7 +155,9 @@ export default function MainContent() {
           </div>
           {/* Panel content */}
           <div className="flex-1 bg-white border-t border-gray-200 overflow-hidden">
-            {ui.activeTab === 'lineup' ? (
+            {isFillView ? (
+              <PortfolioEvaluation />
+            ) : ui.activeTab === 'lineup' ? (
               activeSeries ? (
                 <GeneratedBottlesDisplay />
               ) : (
